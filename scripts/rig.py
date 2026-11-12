@@ -1148,38 +1148,11 @@ def drawing_order(layers, tucked={}):
     return order
 
 
-# Her nose and closed mouth often come from See-through as a patch of her skin with the line in it.
-# They are over her blush (a line goes over a blush), so the patch covered the blush with plain skin
-# where it went across her nose: a hole the shape of her nose (first user, 2026-11-13). Each is
-# made see-through where it is her face's own colour, keeping only what differs from the face under
-# it (the line, and its shading): at rest she looks exactly as before, and a blush shows round it.
-ON_SKIN = ("nose", "mouth_close")
-
-
-def off_skin(layer, face, offset=(0, 0)):
-    """A layer over her face, made clear where it matches the face: the least alpha that gives the
-    same colour over the face at each pixel. `offset` is where the layer's corner is in the face
-    picture (for the sharp copies, which are cut to each layer). Left as it is where the face isn't
-    solid."""
-    import numpy as np
-    top = np.asarray(layer, np.float32) / 255
-    H, W = top.shape[:2]
-    ox, oy = int(round(offset[0])), int(round(offset[1]))
-    under = np.zeros((H, W, 4), np.float32)
-    fa = np.asarray(face, np.float32) / 255
-    x0, y0, x1, y1 = max(0, ox), max(0, oy), min(fa.shape[1], ox + W), min(fa.shape[0], oy + H)
-    if x1 <= x0 or y1 <= y0:
-        return layer
-    under[y0 - oy:y1 - oy, x0 - ox:x1 - ox] = fa[y0:y1, x0:x1]
-    F, a = under[..., :3], top[..., 3:4]
-    T = top[..., :3] * a + F * (1 - a)  # what is seen at rest
-    up = np.where(T > F, (T - F) / np.maximum(1 - F, 1e-4), (F - T) / np.maximum(F, 1e-4))
-    na = np.clip(up.max(axis=2, keepdims=True), 0, 1)
-    rgb = np.clip(F + (T - F) / np.maximum(na, 1e-4), 0, 1)
-    ok = (under[..., 3:4] > 0.99) & (a > 0)
-    out = np.where(ok, np.concatenate([rgb, na], axis=2), top)
-    out[out[..., 3] < 1 / 255] = 0
-    return Image.fromarray((out * 255).round().astype(np.uint8), "RGBA")
+# Her nose goes under her blush, just over her face. See-through often gives it as a patch of her
+# skin with the line in it, and over the blush that patch left a hole the shape of her nose in a
+# blush across it (first user, 2026-11-13). The blush is see-through, so her nose shows through it,
+# a little pink, as a blush over a nose is drawn; her glasses stay over both.
+UNDER_BLUSH = ("nose",)
 
 
 def write_layers(name):
@@ -1219,13 +1192,6 @@ def write_layers(name):
         print(f"   pale rim: {pale} edge pixels that were lighter than her beside them took her colour")
     for under, over in tucked.items():
         images[under] = tuck(images[under], images[over])
-    for layer in ON_SKIN:  # see ON_SKIN
-        if layer in images and "face" in images:
-            images[layer] = off_skin(images[layer], images["face"])
-            if layer in copies and "face" in copies:
-                copy, at, per = copies[layer]
-                face_copy, face_at, _ = copies["face"]
-                copies[layer] = (off_skin(copy, face_copy, ((at[0] - face_at[0]) / per[0], (at[1] - face_at[1]) / per[1])), at, per)
     names = drawing_order(info["order"], tucked)
     if "face" in images:
         face_box = images["face"].getchannel("A").point(lambda a: 255 if a >= 64 else 0).getbbox()
@@ -1242,6 +1208,11 @@ def write_layers(name):
             print("   her blush: the kit's style 1, drawn from her eyes (`parts blush` makes another her layer)")
         else:
             print("   her blush: image2live2d's own, as no eye was found on each side of her face")
+    if "blush" in names and "blush" in images:  # see UNDER_BLUSH
+        for layer in UNDER_BLUSH:
+            if layer in names and names.index(layer) > names.index("blush"):
+                names.remove(layer)
+                names.insert(names.index("blush"), layer)
     order = 0
     for layer in names:
         if layer not in images:
