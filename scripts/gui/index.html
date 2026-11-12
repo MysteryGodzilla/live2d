@@ -301,7 +301,20 @@ async function runReq(req, gpu) {
     logSize(false);
   }
 }
+// New random seeds, as many as the box has now (4 when it is empty), each from 1 to 999,999: plenty
+// of choice, and short enough to read in the box and in the pictures' names (<name>-<seed>.png).
+function randomSeeds() {
+  const box = document.querySelector('input[data-k="seeds"]');
+  const now = (box ? box.value : "").split(",").filter((s) => s.trim()).length;
+  const n = Math.min(16, now || 4), r = new Uint32Array(n);
+  crypto.getRandomValues(r);
+  const seeds = Array.from(r, (x) => 1 + (x % 999999)).join(",");
+  V[cur + "|seeds"] = seeds;
+  if (box) box.value = seeds;
+  previews();
+}
 $("main").addEventListener("click", (e) => {
+  if (e.target.id === "randseeds") return randomSeeds();
   const opt = e.target.closest("button.opt");
   if (opt) {  // a mouth or blush chosen: mark it, and the Draw button's command follows
     V[cur + "|" + opt.dataset.kind + "_style"] = opt.dataset.n;
@@ -496,7 +509,8 @@ function drawMain() {
         : `<p class="muted">The looks file has no characters. Write a look instead.</p>`)
       : `<textarea data-k="look" placeholder="A young woman with long red hair in two pigtails, blue eyes, a white lab coat over a black t-shirt, ...">${esc(val("look", ""))}</textarea>` +
         `<p class="muted">Hair, eyes, build and clothes, from head to shoes. Leave out the pose and the background: the kit adds those.</p>`) +
-    `<div class="row"><label>Seeds ${input("seeds", "1,2,3,4", 'size="14"')}</label><label>Round name ${input("round", name + "-round" + free, 'size="22"')}</label></div>` +
+    `<div class="row"><label>Seeds ${input("seeds", "1,2,3,4", 'size="28"')}</label>` +
+    `<button type="button" id="randseeds" title="Put new random seeds in the box, as many as it has now">Random seeds</button><label>Round name ${input("round", name + "-round" + free, 'size="22"')}</label></div>` +
     `<div class="row"><label><input type="checkbox" data-k="grey" ${val("grey", false) ? "checked" : ""}> A plain grey background instead of a transparent one</label></div>` +
     `<p class="muted">A transparent background means no cut-out step later: picking the picture makes her cut-out from it.</p>` +
     `<h3>ComfyUI</h3><p class="muted">The drawing, cut-out and upscale steps need it running.</p>` +

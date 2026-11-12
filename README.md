@@ -184,7 +184,8 @@ coat over a black t-shirt, a lilac tartan skirt, grey thigh-high stockings and b
 Add `--show` to either one to see the whole prompt without drawing anything.
 
 Pictures and a contact sheet go to `<out>/akane-round1/`. Run more seeds or change the words until
-one is right. `prompts.txt` in the round's folder records the prompt and seed of every picture.
+one is right. `prompts.txt` in the round's folder records the prompt and seed of every picture. In
+the GUI, the Random seeds button fills the box with new seeds, as many as it held before.
 
 The pictures have a transparent background. Qwen Image 2.1 draws a real alpha channel when the
 prompt asks for one, so her edges were never mixed with a background and nothing has to be cut
