@@ -40,8 +40,10 @@ There is also a GUI for people (`live2d.py gui`: the same steps as buttons in a 
    10 minutes a pass on a free card, and can take hours if anything else holds part of it: say
    so, and run it in the background.
 4. `draw --runpod` costs money. Use it only when the user asks for it.
-5. Start and stop only what you started. `live2d.py comfy stop` stops the ComfyUI that
-   `comfy start` started, no other.
+5. Start and stop only what you started. `live2d.py comfy status` says whether ComfyUI is
+   running and who started it: this project, or another folder (then it is someone else's: use
+   it, but don't stop it). `comfy stop` stops only the one this project's `comfy start` started.
+   Stop yours when the drawing, cut-out and upscale steps are done.
 
 ## The steps, and what to check after each
 

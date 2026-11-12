@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import comfy
 import kit
 import view
 import live2d
@@ -119,6 +120,14 @@ def build_command(req):
         action = args.get("action")
         if action not in ("start", "stop", "status"):
             raise Refuse("ComfyUI: start, stop or status")
+        if action != "status":
+            s = comfy.state()
+            if action == "start" and s["running"]:
+                raise Refuse("Not starting another: " + comfy.describe(s))
+            if action == "stop" and s["running"] and not s["ours"]:
+                raise Refuse("Not stopping it: " + comfy.describe(s))
+            if action == "stop" and not s["running"] and not s["stale"]:
+                raise Refuse("ComfyUI isn't running: nothing to stop")
         return ["comfy", action], action == "start"
     if step == "draw":
         name = name or None
@@ -399,6 +408,12 @@ def looks():
         return {}
 
 
+def comfy_state():
+    """ComfyUI's state for the page: whether it answers, whose it is, and one line saying so."""
+    s = comfy.state()
+    return dict(s, line=comfy.describe(s))
+
+
 def state(recheck=False):
     if recheck or CHECK["data"] is None:
         check_rows()
@@ -411,7 +426,7 @@ def state(recheck=False):
     last = JOBS.last()
     return {"project": kit.project(), "kit": kit.KIT, "characters_folder": kit.characters(), "out_folder": kit.out(),
             "check": CHECK["data"] if CHECK["data"] and not (recheck and CHECK["busy"]) else {"pending": True},
-            "characters": chars, "rounds": rounds(), "looks": looks(),
+            "characters": chars, "rounds": rounds(), "looks": looks(), "comfy": comfy_state(),
             "job": {"id": last.id, "state": last.state, "command": command_text(last.argv)} if last else None}
 
 
@@ -453,6 +468,8 @@ class Handler(view.Viewer):
                 return self.send(200, f.read(), view.TYPES[".html"])
         if path == "/api/state":
             return self.json(200, state(recheck="recheck" in parse_qs(url.query)))
+        if path == "/api/comfy":  # cheap: one request to ComfyUI's own address, for the page's badge
+            return self.json(200, comfy_state())
         m = re.fullmatch(r"/api/job/([0-9]+-[0-9]+)", path)
         if m:
             job = JOBS.all.get(m.group(1))

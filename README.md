@@ -125,6 +125,12 @@ The page lists your characters and the nine steps below, each with what it does,
 it will run, a Run button and the picture to look at afterwards. A log at the bottom shows the
 command's output as it runs, with a Stop button. The GPU steps ask for a second click.
 
+A badge at the top says whether ComfyUI is running, and the steps that need it offer only what
+makes sense: Start when it isn't running, Stop when this project started it, and neither when it
+was started from another folder (it can still be used; stop it where it was started). The page
+looks again every 15 seconds, and a click on the badge looks at once. The split steps warn when
+ComfyUI still holds part of the graphics card.
+
 The page runs the same `python live2d.py <step> ...` commands you would type, one at a time, and
 nothing else; it adds no steps of its own. It listens on this PC only. An agent should use the
 commands, not the page.
@@ -204,6 +210,11 @@ python live2d.py comfy stop
 
 Look at `full/cutout.png`: she should be whole, with no background left. Stop ComfyUI before the
 next step. The next step needs the whole card.
+
+It is easy to leave ComfyUI running. `python live2d.py comfy status` says whether it is, whether
+this project started it, and how much of the card it holds; `check` says the same in one line,
+and `split` warns before it starts if ComfyUI still holds a gigabyte or more. `comfy start` won't
+start a second one, and `comfy stop` stops only the one this project started.
 
 `cutout` is for a picture that has a background: your own, or one drawn with `--background`. It
 uses BiRefNet and takes the background's colour back out of her edges. It does that well, but a

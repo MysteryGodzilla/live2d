@@ -39,6 +39,11 @@ header .project { flex: 1 1 300px; min-width: 0; overflow-wrap: anywhere; color:
 .pill { border-radius: 999px; padding: 4px 14px; min-height: 34px; }
 .pill.ok { color: var(--ok); border-color: var(--ok); }
 .pill.bad { color: var(--bad); border-color: var(--bad); }
+.pill.warn { color: var(--text); border-color: var(--warn-line); background: var(--warn-bg); }
+.pill.off { color: var(--muted); }
+.comfy { border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 8px 0; font-size: 14px; }
+.comfy.on { border-left-color: var(--ok); }
+.comfy.other { border-left-color: var(--warn-line); }
 #checkbox { padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
 #checkbox table { border-collapse: collapse; width: 100%; font-size: 14px; }
 #checkbox td { padding: 3px 10px 3px 0; vertical-align: top; }
@@ -108,6 +113,7 @@ iframe { width: 100%; height: 680px; border: 1px solid var(--line); border-radiu
 <header>
   <h1>Live2D kit</h1>
   <div class="project" id="project">Loading...</div>
+  <button class="pill" id="comfypill" type="button" title="ComfyUI: click to look again">ComfyUI: ...</button>
   <button class="pill" id="checkpill" type="button">Check: running...</button>
 </header>
 <div id="checkbox" hidden></div>
@@ -164,6 +170,7 @@ async function loadState(recheck) {
   const names = allNames();
   if (!cur || !names.includes(cur)) cur = names[0] || null;
   $("project").textContent = "Project: " + S.project;
+  drawComfy();
   drawCheck();
   drawChars();
   drawMain();
@@ -197,6 +204,29 @@ function drawCheck() {
     `<p><button type="button" id="recheck">Check again</button></p>`;
 }
 $("checkpill").onclick = () => { $("checkbox").hidden = !$("checkbox").hidden; };
+
+/* ---- ComfyUI: running or not, and whose ---- */
+function drawComfy() {
+  const s = S.comfy || {}, pill = $("comfypill");
+  pill.classList.remove("ok", "warn", "off");
+  if (!s.running) { pill.textContent = "ComfyUI: not running"; pill.classList.add("off"); }
+  else if (s.ours) { pill.textContent = "ComfyUI: running" + (s.held_gb ? ", " + s.held_gb + " GB" : ""); pill.classList.add("ok"); }
+  else { pill.textContent = "ComfyUI: running, started elsewhere"; pill.classList.add("warn"); }
+  pill.title = s.line || "";
+}
+async function refreshComfy() {
+  try {
+    const s = await api("/api/comfy");
+    const was = S.comfy || {};
+    S.comfy = s;
+    drawComfy();
+    if (was.running !== s.running || was.ours !== s.ours) drawMain();  // the steps' buttons follow it
+  } catch (e) { /* the server is gone; the next state load says so */ }
+}
+$("comfypill").onclick = refreshComfy;
+// A light look every 15 seconds while the page is in front, so a ComfyUI started or stopped
+// elsewhere shows here too.
+setInterval(() => { if (document.visibilityState === "visible" && S) refreshComfy(); }, 15000);
 $("checkbox").onclick = (e) => { if (e.target.id === "recheck") { S.check = { pending: true }; drawCheck(); loadState(true); } };
 
 /* ---- the characters ---- */
@@ -332,6 +362,7 @@ function track(id) {
         clearInterval(timer);
         if (/ layers check /.test(j.command) && j.state === "done") V[cur + "|checkText"] = j.output;
         await loadState(false);
+        if (/ comfy (start|stop)/.test(j.command)) [1500, 4000].forEach((ms) => setTimeout(refreshComfy, ms));  // its port takes a moment to open or close
       }
     } catch (e) {
       clearInterval(timer);
@@ -385,7 +416,20 @@ function drawMain() {
     d("closed eyes and open mouth"), c.built, false,
   ];
   const first = done.findIndex((x, i) => !x && i !== 4 && i !== 8);
-  const comfy = (action, label) => A(() => ({ step: "comfy", args: { action } }), label, { gpu: action === "start" });
+  // ComfyUI's part of a step: what is running, and only the button that makes sense.
+  const cs = S.comfy || {};
+  const comfyBox = () => {
+    if (!cs.running) return `<div class="comfy">ComfyUI is not running. The drawing, cut-out and upscale steps need it.</div>` +
+      A(() => ({ step: "comfy", args: { action: "start" } }), "Start ComfyUI", { gpu: true });
+    if (cs.ours) return `<div class="comfy on">ComfyUI is running, started from this project` + (cs.held_gb ? `, holding ${esc(cs.held_gb)} GB of the graphics card` : "") +
+      `. Stop it when you are done with the drawing, cut-out and upscale steps: the split needs the card to itself.</div>` +
+      A(() => ({ step: "comfy", args: { action: "stop" } }), "Stop ComfyUI");
+    return `<div class="comfy other">ComfyUI is running, started ${cs.where ? "from another folder, <code>" + esc(cs.where) + "</code>" : "outside the kit"}. ` +
+      `The steps here can use it. Stop it where it was started.</div>`;
+  };
+  const comfyWarn = () => cs.running && (cs.held_gb || 0) >= 1
+    ? `<div class="note">ComfyUI is still running and holds ${esc(cs.held_gb)} GB of the graphics card. See-through wants the card to itself: ` +
+      (cs.ours ? "stop ComfyUI (step 3) before the split." : "stop it where it was started before the split.") + `</div>` : "";
   const html = [];
 
   // 1. Draw candidates
@@ -408,7 +452,7 @@ function drawMain() {
     `<div class="row"><label><input type="checkbox" data-k="grey" ${val("grey", false) ? "checked" : ""}> A plain grey background instead of a transparent one</label></div>` +
     `<p class="muted">A transparent background means no cut-out step later: picking the picture makes her cut-out from it.</p>` +
     `<h3>ComfyUI</h3><p class="muted">The drawing, cut-out and upscale steps need it running.</p>` +
-    comfy("start", "Start ComfyUI") + comfy("stop", "Stop ComfyUI") +
+    comfyBox() +
     `<h3>Draw</h3>` +
     A(() => {
       const args = { round: val("round", name + "-round" + free), seeds: val("seeds", "1,2,3,4") };
@@ -436,17 +480,16 @@ function drawMain() {
   // 3. Cut out and upscale
   html.push(stepBox(3, "Cut out and upscale", done[2], ["GPU", "about 2 minutes"],
     `<p>Her drawing without its background, then twice and four times the size. A drawing with a transparent background was already cut out when you picked it: only Upscale is needed. Look at the cut-out: she should be whole, with no background left. Stop ComfyUI before the next step: it needs the whole card.</p>` +
-    GPU_NOTE + comfy("start", "Start ComfyUI") +
+    GPU_NOTE + comfyBox() +
     A(() => ({ step: "cutout", name }), "Cut out", { gpu: true }) +
     A(() => ({ step: "upscale", name }), "Upscale", { gpu: true }) +
-    comfy("stop", "Stop ComfyUI") +
     (p.cutout ? `<div class="pics"><div class="checker"><img src="${esc(p.cutout)}" alt="Her cut-out on a checkerboard"></div></div>` : ""),
     first === 2));
 
   // 4. Split into layers
   html.push(stepBox(4, "Split into layers", done[3], ["GPU", "about 10 minutes"],
     `<p>See-through cuts her into about 17 layers (hair, face, eyes, clothes) and paints in what is hidden behind each one. Her layers are saved one picture each.</p>` +
-    GPU_NOTE + A(() => ({ step: "split", name, args: { mode: "body" } }), "Split her (body)", { gpu: true }) +
+    GPU_NOTE + comfyWarn() + A(() => ({ step: "split", name, args: { mode: "body" } }), "Split her (body)", { gpu: true }) +
     (L.length ? `<p class="muted">Her layers (${c.frame ? c.frame[0] + "x" + c.frame[1] : ""}): ${esc(L.join(", "))}</p>` : ""),
     first === 3));
 
@@ -487,7 +530,7 @@ function drawMain() {
   const psds = c.head_psds;
   html.push(stepBox(6, "Head pass", done[5], ["GPU", "about 12 minutes"],
     `<p>Her face is small in the whole-body split, so her head is split again from a four-times-bigger drawing. Fix her layers first. Then run the commands below, in this order. The last one cleans her neck under her chin, so no second jaw line shows when her head lifts.</p>` +
-    GPU_NOTE + A(() => ({ step: "split", name, args: { mode: "head" } }), "Split her head", { gpu: true }) +
+    GPU_NOTE + comfyWarn() + A(() => ({ step: "split", name, args: { mode: "head" } }), "Split her head", { gpu: true }) +
     `<h3>Then, in order</h3>` +
     `<p>First, her layers at twice the size. Her drawing's upscaled copy is used.</p>` +
     A(() => ({ step: "layers", name, args: { command: "scale", factor: 2 } }), "Scale to 2") +

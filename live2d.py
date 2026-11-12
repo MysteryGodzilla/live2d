@@ -7,7 +7,8 @@ Python that step needs, and prints the command it runs.
   live2d.py check                      what is installed, and what is missing for which step
   live2d.py status <name>              where a character is in the steps, and what comes next
 
-  live2d.py comfy start|stop|status    our ComfyUI (the drawing, cut-out and upscale steps use it)
+  live2d.py comfy start|stop|status    our ComfyUI (the drawing, cut-out and upscale steps use it);
+                                       status says whether it runs, who started it and what it holds
   live2d.py draw <round> --character <name> --seeds 1,2,3    candidate drawings of a character in the
                                        looks file, or --look "..." (scripts/draw.py has the rest)
   live2d.py pick <name> <picture.png>  that picture becomes her drawing: <characters>/<name>/full/base.png,
@@ -282,8 +283,10 @@ def check():
     wide = max(len(r[0]) for r in rows)
     for what, problem, steps in rows:
         print(f"{what:{wide}}  {'ok' if not problem else 'MISSING: ' + problem:58}  for: {steps}")
+    import comfy
+    print("\n" + comfy.describe())
     if d["has_gpu"]:
-        print(f"\nGPU: {d['gpu']}  (the GPU steps want it to themselves: close what else is on it)")
+        print(f"GPU: {d['gpu']}  (the GPU steps want it to themselves: close what else is on it)")
     if any(problem for _, problem, _ in rows):
         print(f"\nWhat to download and where it goes: {os.path.join(HERE, 'README.md')}, \"What you need\"")
 
@@ -353,6 +356,11 @@ def main(args):
     elif step == "upscale" and len(rest) == 1:
         upscale(rest[0])
     elif step == "split" and len(rest) in (2, 6) and rest[1] in ("body", "head"):
+        import comfy
+        s = comfy.state()
+        if s["running"] and (s["held_gb"] or 0) >= 1:  # See-through needs the whole card; this can make a split take hours
+            print(f"Note: {comfy.describe(s)}. See-through wants the card to itself: "
+                  + ("`live2d.py comfy stop` first if the split is slow" if s["ours"] else "stop it if the split is slow"), flush=True)
         run(seethrough_python(), "split.py", rest[1], kit.pose_of(rest[0]), *rest[2:])
     elif step in ("layers", "parts") and len(rest) >= 2:
         run(seethrough_python(), step + ".py", rest[0], kit.pose_of(rest[1]), *rest[2:])
