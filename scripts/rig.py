@@ -67,6 +67,7 @@ from image2live2d.core import decompose
 from image2live2d.core.decompose import sources
 from image2live2d.core.mesh import build as mesh_build
 from image2live2d.core.rig import author
+from image2live2d.core.structure import strands
 from image2live2d.irr.schema import Keyform, Parameter, SemanticRole
 from image2live2d import pipeline
 from image2live2d.pipeline import rig_from_stack
@@ -98,6 +99,30 @@ def mouth_swap(param_id, lips, cavity, open_fn):
 
 
 author._mouth_open = mouth_swap
+
+# Her hair in sections. image2live2d can swing a sheet of hair as several sections side by side,
+# each on a pendulum of its own, blended across the sheet so it ripples and nothing tears. It
+# sizes a section for a head that fills the picture (0.13 of the picture's width) and leaves the
+# front hair out, so on a whole figure, whose head is a tenth of the picture, every sheet came out
+# as one section: her bangs, the locks beside her face and both her tails swung as one board.
+# Here a section is sized from her own face, and her front hair is sectioned too: the locks beside
+# her face swing apart from her bangs, and one tail apart from the other.
+HAIR_SECTION = 0.6   # a section's width, in face widths: a sheet narrower than two of them stays one
+HAIR_SECTIONS = 4    # the most sections one sheet gets (each is one more parameter on its mesh)
+FACE_WIDE = [None]   # her face's width as a share of the picture's, set when her layers are written
+_column_count = strands._column_count
+
+
+def hair_sections(width):
+    """How many sections a sheet of hair this wide gets (the width as a share of the picture's)."""
+    if not FACE_WIDE[0]:
+        return _column_count(width)
+    section = HAIR_SECTION * FACE_WIDE[0]
+    return 1 if width < 2.0 * section else min(HAIR_SECTIONS, max(2, round(width / section)))
+
+
+strands._column_count = hair_sections
+strands._COLUMN_ROLES = (SemanticRole.hair_back, SemanticRole.hair_side, SemanticRole.hair_front)
 
 _build_mesh = mesh_build.build_mesh
 
@@ -1118,6 +1143,9 @@ def write_layers(name):
     for under, over in tucked.items():
         images[under] = tuck(images[under], images[over])
     names = drawing_order(info["order"], tucked)
+    if "face" in images:
+        face_box = images["face"].getchannel("A").point(lambda a: 255 if a >= 64 else 0).getbbox()
+        FACE_WIDE[0] = (face_box[2] - face_box[0]) / images["face"].width if face_box else None
     if "blush" not in images and "face" in images:
         import numpy as np
         alpha = lambda layer: np.asarray(images[layer].getchannel("A"), np.float32) / 255
@@ -1187,6 +1215,7 @@ def build(name):
     shutil.rmtree(model, ignore_errors=True)
     i2l_tool("emit_cubism_bundle").emit_bundle(Path(layers), Path(model))
     write_acting(model)
+    sway_hair(model)
 
     from image2live2d.backends.live2d.cmo3 import rig_to_cmo3
     rig = rig_from_stack(decompose.from_layer_dir(Path(layers)), name=name.replace("/", "-"))
@@ -1298,6 +1327,44 @@ def motion(lanes):
                      "TotalPointCount": points, "UserDataCount": 0, "TotalUserDataSize": 0,
                      "FadeInTime": 0.25, "FadeOutTime": 0.4},
             "Curves": curves}
+
+
+# What her hair listens to. image2live2d swings each section from her head's turn and tilt alone,
+# so with her head still her hair is still, though her body sways and she breathes all through her
+# idle. Cubism's own sample models feed her body's sway and lean into each strand as well, at two
+# thirds of the head's weight, and her body's bob into the hair's rise and fall. So do we.
+HAIR_FROM_BODY = 40.0  # the weight of each of her body's moves on her hair (her head's are 60)
+
+
+def sway_hair(model):
+    """Add her body's moves to what drives her hair, in the model's physics file."""
+    path = os.path.join(model, "model.physics3.json")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        doc = json.load(f)
+    with open(os.path.join(model, "model.cdi3.json"), encoding="utf-8") as f:
+        hers = {p["Id"] for p in json.load(f)["Parameters"]}
+    added = 0
+    for setting in doc["PhysicsSettings"]:
+        outs = [o["Destination"]["Id"] for o in setting["Output"]]
+        if not all(o.startswith("ParamHair") for o in outs):
+            continue
+        there = {i["Source"]["Id"] for i in setting["Input"]}
+        rise = all(o.endswith("V") for o in outs)  # a section's rise and fall, not its swing
+        kind = setting["Input"][0]["Type"] if rise and setting["Input"] else None
+        wanted = [("ParamBodyAngleY", kind or "Angle")] if rise else [("ParamBodyAngleX", "X"), ("ParamBodyAngleZ", "Angle")]
+        for param, how in wanted:
+            if param in hers and param not in there:
+                setting["Input"].append({"Source": {"Target": "Parameter", "Id": param}, "Weight": HAIR_FROM_BODY,
+                                         "Type": how, "Reflect": False})
+                added += 1
+    doc["Meta"]["TotalInputCount"] = sum(len(s["Input"]) for s in doc["PhysicsSettings"])
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+    sections = sorted(o["Destination"]["Id"] for s in doc["PhysicsSettings"] for o in s["Output"]
+                      if o["Destination"]["Id"].startswith("ParamHair") and not o["Destination"]["Id"].endswith("V"))
+    print(f"hair: {len(sections)} sections that swing each by itself ({', '.join(sections)}); her body's sway moves them too")
 
 
 def write_acting(model):

@@ -67,6 +67,7 @@ comes back in a new form. Commands are `python <kit>/live2d.py ...`.
 
 | You see | Why | Do |
 |---|---|---|
+| All her hair swings as one board | Handled: a sheet of hair is divided into sections sized from her face, each on a pendulum of its own, and her body's sway moves them as well as her head | More or fewer: `HAIR_SECTION` and `HAIR_SECTIONS` in `rig.py`. `build` prints how many it made |
 | Her legs leave her shoes, or her stockings swing | Handled: `legwear` and `footwear` are part of her, not cloth | If a new layer swings that shouldn't (socks under another name), add its name to `STILL` in `rig.py` |
 | All of her slides over the floor when she sways | Handled: her body's moves keep her feet planted | Nothing |
 | A lifted arm drags her skirt | Handled: arm parameters move only arms | Nothing |
@@ -89,7 +90,9 @@ comes back in a new form. Commands are `python <kit>/live2d.py ...`.
 ## Limits you can't fix here
 
 - She has one drawing. Nothing shows the back of a hand, a different hand shape, or her side.
-- Long hair moves as one piece with her back hair. Twin tails don't swing each by itself.
+- Her hair swings in sections side by side, not strand by strand: two tails swing apart, but a
+  lock that crosses in front of another moves with whatever is behind it. Her bangs and the locks
+  beside her face are one layer, so they blend into each other where they meet.
 - Elbows bend up to 70 degrees outward and 80 inward. Hands can't reach her face.
 - `ParamEyeLOpen` closes the eye on the left of the picture. Cubism's own models close the
   character's left eye, which is on the right. A wink from a shared motion file comes out mirrored.

@@ -407,7 +407,10 @@ Every model the kit builds has the same names, so an app's settings and prompts 
 - **Parameters.** The standard Cubism ones for head, eyes, brows, mouth, body and breath. Also
   `ParamArmLA` and `ParamArmRA` (shoulder), `ParamArmLB` and `ParamArmRB` (elbow), `ParamLegLB` and
   `ParamLegRB` (knee), `ParamEyeBallForm` (-1 is small, frightened irises), `ParamCheek` (blush),
-  and physics for hair, skirt and chest.
+  and physics for hair, skirt and chest. Her hair swings in sections, each by itself
+  (`ParamHairFront`, `ParamHairFront2`, `ParamHairBack`, `ParamHairBack2` and so on, as many as
+  her hair is wide): the locks beside her face apart from each other, one tail apart from the
+  other. Her head's turn and tilt and her body's sway and lean all move them.
 - **Expressions,** held until another is set: `happy`, `tired`, `blushing`, `angry`, `scared`.
 - **Emotion motions,** a few seconds each: `Happy`, `Sad`, `Angry`, `Awkward`, `Think`, `Surprise`,
   `Question`, `Curious`, and `Idle`. These are the motion group names AIRI plays for each emotion.
@@ -431,6 +434,7 @@ viewer.
 | Her chest's bounce | `BUST`, `BUST_WIDE`, `BUST_HIGH`, `CHEST` |
 | How far arms lift and elbows bend | `ARM_OUT`, `ARM_IN`, `ELBOW_OUT`, `ELBOW_IN` |
 | How far knees bend, and how much a sway bends one | `KNEE_IN`, `KNEE_OUT`, `SWAY_KNEE` |
+| How many sections her hair swings in, and how much her body's sway moves it | `HAIR_SECTION`, `HAIR_SECTIONS`, `HAIR_FROM_BODY` |
 | Where her hips, knees and ankles are, if she is built differently | `HIPS`, `KNEE`, `ANKLE` |
 | An expression's face and pose | `EXPRESSIONS` |
 | The head pat and the poke | `TAPS` |
