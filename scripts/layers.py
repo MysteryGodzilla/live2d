@@ -65,7 +65,14 @@ psd-tools (MIT), numpy and scipy:
       Her neck and clothes stay from the whole-body pass, and so does any layer that reaches out
       of the cut (long hair, when the cut is close round her face). The head pass's mouth replaces
       her mouth_close; eye_close and mouth_open go, as they were made from the old eyes and mouth:
-      run parts.py closed-eyes and mouth again
+      run parts.py closed-eyes and mouth again. Each layer taken is also kept at the head pass's
+      own size (parts/<layer>@head.png, and sharp.json beside layers.json), about two and a half
+      times her frame's: the build puts those in her model's texture, so her face stays sharp
+      when an app shows her close up
+  sharp <name>
+      the same full-size copies for a character whose head layers were taken before the kit kept
+      them: made again from the head PSD kept in her layers folder, for every head layer that is
+      still as it was taken. Her layers themselves aren't changed
 
 The drawing is her base.png, placed in the frame as See-through placed it (scaled to the frame's
 height, centred), with the background where her idle sprite's cut-out is clear.
@@ -584,18 +591,55 @@ HEAD = {"back hair", "front hair", "face", "ears", "eyebrow", "eyelash", "eyewhi
         "nose", "mouth", "eyewear", "headwear", "earwear"}
 
 
-def do_head(name, psd_path, crop_path):
-    from psd_tools import PSDImage
-    info = load(name)
+# A head layer at the head pass's own size: parts/<layer>@head.png, with where it lies in her frame
+# in sharp.json ({layer: {"at": [x, y] of its corner in her frame's pixels, "per": [x, y] how many
+# of her frame's pixels one of its pixels is}}). Her layers stay the truth: the build uses a sharp
+# copy only while it still matches its layer, so an edit to a layer simply switches its copy off.
+SHARP = "sharp.json"
+SHARP_SAME = 0.03  # sharp: a head layer this close to the head pass's (0 to 1, on average) is as it was taken
+
+
+def sharp_path(name, layer):
+    return os.path.join(folder(name), "parts", layer + "@head.png")
+
+
+def load_sharp(name):
+    path = os.path.join(folder(name), SHARP)
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_sharp(name, sharp):
+    with open(os.path.join(folder(name), SHARP), "w", encoding="utf-8", newline="\n") as f:
+        json.dump(sharp, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+def rename_sharp(name, old, new):
+    """A layer's sharp copy goes with it when the layer is renamed (mouth to mouth_close)."""
+    sharp = load_sharp(name)
+    if old in sharp and os.path.exists(sharp_path(name, old)):
+        os.replace(sharp_path(name, old), sharp_path(name, new))
+        sharp[new] = sharp.pop(old)
+        save_sharp(name, sharp)
+
+
+def head_placing(name, info, psd, crop):
+    """Where a head pass's frame lies in hers: its size there, its corner, the cut's own box in her
+    frame, and how many of her pixels one of its pixels is."""
     W, H = info["frame"]
-    crop = json.load(open(crop_path, encoding="utf-8"))
     x0, y0, x1, y1 = crop["box_in_base"]
     c = crop["scale_of_crop"]
-    bw, bh = Image.open(os.path.join(ROOT, crop["base"])).size
+    base = os.path.join(ROOT, crop["base"])
+    if not os.path.exists(base):  # the project was moved since the cut: her drawing, where it is now
+        char, pose = split(name)
+        base = os.path.join(CHARS, char, *([pose] if pose else []), "base.png")
+    bw, bh = Image.open(base).size
     # Her drawing in her frame, as drawing() places it.
     s = H / bh
     X = (W - round(bw * s)) // 2
-    psd = PSDImage.open(psd_path)
     # The head cut in the head pass's frame: See-through fits its longer side to the frame and
     # centres it. (This took the height to be the longer side, right for one character's tall cut; another's
     # was wider than tall, so her face went in 7% small and her drawn jaw line showed under it.)
@@ -605,7 +649,96 @@ def do_head(name, psd_path, crop_path):
     m = s / (c * k)  # head-pass pixels to hers
     size = (round(psd.width * m), round(psd.height * m))
     at = (round(X + x0 * s - xo * m), round(y0 * s - yo * m))
-    order, taken, left, kept = info["order"], [], [], []
+    cut = (round(X + x0 * s), round(y0 * s), round(X + x1 * s), round(y1 * s))
+    return size, at, cut, m
+
+
+def head_layer(psd, layer, size, at, frame):
+    """One layer of the head pass as a layer of hers: shrunk to her frame's size and put in place."""
+    W, H = frame
+    part = Image.new("RGBA", (psd.width, psd.height))
+    pic = layer.topil()
+    if pic is not None:
+        part.paste(pic.convert("RGBA"), (layer.left, layer.top))
+    small = resize_rgba(np.asarray(part, np.float32) / 255, size)
+    full = np.zeros((H, W, 4), np.float32)
+    fx0, fy0 = max(at[0], 0), max(at[1], 0)
+    fx1, fy1 = min(at[0] + size[0], W), min(at[1] + size[1], H)
+    full[fy0:fy1, fx0:fx1] = small[fy0 - at[1]:fy1 - at[1], fx0 - at[0]:fx1 - at[0]]
+    return full
+
+
+def best_fit(taken, hers):
+    """How far a head-pass layer, put in her frame, is from her own layer, at the whole-pixel shift
+    of up to 2 that fits best: (how far apart on average from 0 to 1, the shift across, the shift
+    down). An older kit rounded a head layer's place a pixel differently."""
+    where = (taken[..., 3] > 0.05) | (hers[..., 3] > 0.05)
+    if not where.any():
+        return 1.0, 0, 0
+    ys, xs = np.nonzero(where)
+    y0, y1, x0, x1 = max(ys.min() - 3, 0), ys.max() + 4, max(xs.min() - 3, 0), xs.max() + 4
+    a, b = taken[y0:y1, x0:x1], hers[y0:y1, x0:x1]
+    a, b = a[..., :3] * a[..., 3:4], b[..., :3] * b[..., 3:4]
+    seen = where[y0:y1, x0:x1]
+    best = (9.0, 0, 0)
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            moved = np.roll(a, (dy, dx), axis=(0, 1))
+            both = seen | np.roll(seen, (dy, dx), axis=(0, 1))
+            best = min(best, (float(np.abs(moved - b)[both].mean()), dx, dy))
+    return best
+
+
+def keep_sharp(name, sharp, target, psd, layer, size, at):
+    """Keep a head-pass layer at its own size beside her layer."""
+    pic = layer.topil()
+    if pic is None:
+        return False
+    pic.convert("RGBA").save(sharp_path(name, target), optimize=True)
+    per = (size[0] / psd.width, size[1] / psd.height)
+    sharp[target] = {"at": [at[0] + layer.left * per[0], at[1] + layer.top * per[1]], "per": list(per)}
+    return True
+
+
+def do_sharp(name):
+    from psd_tools import PSDImage
+    info = load(name)
+    psds = sorted(f for f in os.listdir(folder(name)) if f.endswith("-head.psd"))
+    crop_path = os.path.join(folder(name), "head-crop.json")
+    if not psds or not os.path.exists(crop_path):
+        sys.exit(f"{name}: no head PSD and head-crop.json in {folder(name)}: the head pass (`split <name> head`) makes them")
+    psd = PSDImage.open(os.path.join(folder(name), psds[-1]))
+    size, at, _, m = head_placing(name, info, psd, json.load(open(crop_path, encoding="utf-8")))
+    order, sharp, made, changed = info["order"], load_sharp(name), [], []
+    for layer in psd:
+        if layer.name not in HEAD:
+            continue
+        target = "mouth_close" if layer.name == "mouth" and "mouth_close" in order else layer.name
+        if target not in order:
+            continue
+        apart, dx, dy = best_fit(head_layer(psd, layer, size, at, info["frame"]), read_part(name, target))
+        if apart <= SHARP_SAME and keep_sharp(name, sharp, target, psd, layer, size, (at[0] + dx, at[1] + dy)):
+            made.append(target + (f" (moved {dx:+d},{dy:+d})" if dx or dy else ""))
+        else:
+            changed.append(f"{target} ({apart:.2f} apart)")
+            sharp.pop(target, None)
+            if os.path.exists(sharp_path(name, target)):
+                os.remove(sharp_path(name, target))
+    save_sharp(name, sharp)
+    print(f"{name}: kept at the head pass's own size ({1 / m:.2f} times her frame's): {', '.join(made) or 'none'}")
+    if changed:
+        print(f"  not as the head pass made them (from the whole-body pass, or changed since), left at her frame's size: {', '.join(changed)}")
+    print(f"next: `live2d.py build {name.removesuffix('/full')}`")
+
+
+def do_head(name, psd_path, crop_path):
+    from psd_tools import PSDImage
+    info = load(name)
+    W, H = info["frame"]
+    crop = json.load(open(crop_path, encoding="utf-8"))
+    psd = PSDImage.open(psd_path)
+    size, at, (cx0, cy0, cx1, cy1), m = head_placing(name, info, psd, crop)
+    order, taken, left, kept, sharp = info["order"], [], [], [], load_sharp(name)
     for layer in psd:
         if layer.name not in HEAD:
             continue
@@ -616,8 +749,6 @@ def do_head(name, psd_path, crop_path):
         # The cut in her frame, a little inside its edge: a layer of hers with anything out of it
         # was cut short by the head pass (long hair), so hers stays.
         inside = np.zeros((H, W), bool)
-        cx0, cy0 = round(X + x0 * s), round(y0 * s)
-        cx1, cy1 = round(X + x1 * s), round(y1 * s)
         edge = round(0.02 * (cy1 - cy0))
         inside[max(cy0 + edge, 0):cy1 - edge, max(cx0 + edge, 0):cx1 - edge] = True
         if cy0 <= 0:  # a cut that starts at the top of her drawing has no edge there
@@ -625,17 +756,10 @@ def do_head(name, psd_path, crop_path):
         if ((read_part(name, target)[..., 3] > 0.5) & ~inside).sum() > SPOT:
             kept.append(target)
             continue
-        part = Image.new("RGBA", (psd.width, psd.height))
-        pic = layer.topil()
-        if pic is not None:
-            part.paste(pic.convert("RGBA"), (layer.left, layer.top))
-        small = resize_rgba(np.asarray(part, np.float32) / 255, size)
-        full = np.zeros((H, W, 4), np.float32)
-        fx0, fy0 = max(at[0], 0), max(at[1], 0)
-        fx1, fy1 = min(at[0] + size[0], W), min(at[1] + size[1], H)
-        full[fy0:fy1, fx0:fx1] = small[fy0 - at[1]:fy1 - at[1], fx0 - at[0]:fx1 - at[0]]
-        write_part(name, target, full)
+        write_part(name, target, head_layer(psd, layer, size, at, info["frame"]))
+        keep_sharp(name, sharp, target, psd, layer, size, at)
         taken.append(target)
+    save_sharp(name, sharp)
     gone = [layer for layer in ("eye_close", "mouth_open", "blush") if layer in order]
     for layer in gone:
         os.remove(part_path(name, layer))
@@ -783,6 +907,8 @@ def main(args):
         do_cubism(name)
     elif cmd == "head" and len(rest) == 2:
         do_head(name, rest[0], rest[1])
+    elif cmd == "sharp" and not rest:
+        do_sharp(name)
     else:
         sys.exit(__doc__)
 

@@ -79,6 +79,10 @@ setting in her `live2d.json` under `"why"`: the next person can't see what you s
 - `body: her feet at ..., knees ..., hips ..., neck ...; 2 arms that bend, 2 legs that bend; ...`:
   0 arms or 0 legs means that pair is one shape in her layers. Feet at 0.000 means a stray pixel
   at the bottom of a layer.
+- `in the texture at the head pass's own size: face, eyelash, ...`: the head parts that went into
+  her texture sharp. No such line means she has no sharp copies: `layers sharp <name>` makes them
+  from her kept head PSD. `changed since the head pass` names head layers edited after it, which
+  are used at her frame's size: that is right, not a fault.
 
 ## Checking her model without watching the screen
 

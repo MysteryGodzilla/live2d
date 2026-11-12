@@ -211,6 +211,13 @@ python live2d.py layers under akane neck face
 under her chin, so no second jaw line shows when her head lifts. If one still shows beside her
 neck, run it for her back hair too: `layers under akane "back hair" face`.
 
+`layers head` also keeps each head layer at the head pass's own size, about twice her frame's
+(`parts/<layer>@head.png`). `build` puts those in her model's texture, so her face, eyes and brows
+stay sharp when an app shows her close up. A character whose head layers were taken with an older
+kit gets them with `python live2d.py layers sharp akane`, then `build`. Her layers stay the truth:
+if you change a head layer afterwards, `build` sees that its sharp copy no longer matches and
+uses the layer as it is.
+
 **7. Closed eyes and open mouth.** The drawing has her eyes open and her mouth shut. These draw
 the other two.
 

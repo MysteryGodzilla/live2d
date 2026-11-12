@@ -483,6 +483,7 @@ def do_mouth(name, style=None, file=None, width=None, flip=False):
     order = info["order"]
     if "mouth" in order:
         os.replace(L.part_path(name, "mouth"), L.part_path(name, "mouth_close"))
+        L.rename_sharp(name, "mouth", "mouth_close")
         order[order.index("mouth")] = "mouth_close"
         L.note(info, "mouth renamed mouth_close: her own small mouth, shown while it's shut")
     at, line, face_w = mouth_fit(name, info)

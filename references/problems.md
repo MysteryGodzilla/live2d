@@ -43,6 +43,7 @@ comes back in a new form. Commands are `python <kit>/live2d.py ...`.
 |---|---|---|
 | A second jaw line under her chin | The drawing's jaw line was coloured into the layers behind her face | `layers under <name> neck face`. If it shows beside her neck when her head lifts: `layers under <name> "back hair" face` |
 | Her face is soft or a little wrong close up | The whole-body split gives her face about 100 pixels | Do the head pass (step 6 of the README) |
+| Her face is still soft close up after the head pass | Her frame holds her head layers at about two fifths of the head pass's size, and an older kit put them in the texture at that size | Handled for new characters: `layers head` keeps them full size and `build` uses those. For one made before: `layers sharp <name>`, then `build` |
 | Her face parts are a little small after the head pass | Handled: a head cut wider than tall was once placed as a tall one | If it comes back, compare `layers check` before and after `layers head` |
 | Long hair is cut off after the head pass | Handled: a layer that reaches out of the head cut stays from the whole-body pass | Nothing. `layers head` prints which layers it kept |
 | Her head is tilted at rest | Handled: `build` turns her head upright from her eyes and brows, and says by how much | If it says it found no pair to read, an eye layer didn't split in two (hair over an eye). Fix her `eyewhite` and `irides` layers |

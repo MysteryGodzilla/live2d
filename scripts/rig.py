@@ -38,6 +38,9 @@ eyes go over her irises (see drawing_order).
 Her blush is the kit's own (blush.py): her `blush` layer if parts.py made one, else style 1 drawn
 here from her eyes, so image2live2d paints none. Its mesh covers all of it (see soft_mesh).
 
+Her head's layers go into the model's texture at the head pass's own size where layers.py kept
+them (see sharp_atlas): her frame holds them at about two fifths of it.
+
 How she moves is ours, and so is the .moc3's writing (see "The rig" below): her head's turn and nod
 (each part of her face sliding a little, her irises doing most of the looking), her irises cut off
 at the edge of her eyes, her body's sway, bob, lean and breath with her feet on the floor, arms
@@ -214,6 +217,18 @@ STILL = {"legwear", "footwear"}  # layers that are part of her, not cloth that s
 LAYER_OF = {}  # each part image write_layers made -> the layer it came from
 DRAWN = {}  # ... -> the box of what is drawn in it, in the rig's units (a mesh's own box is wider)
 MIDDLE = {}  # ... -> the middle of what is drawn in it (its pixels' own), and of its lowest rows
+SHARP = {}  # ... -> its picture at the head pass's own size, and the box of her frame it covers (0 to 1)
+
+# Her face, sharp close up. Her frame holds each head layer at about 0.41 of the size the head pass
+# made it, and image2live2d's texture atlas packs every part at her frame's size, which leaves nine
+# tenths of the atlas empty. layers.py keeps each head layer at the head pass's own size beside her
+# layer (parts/<layer>@head.png, sharp.json); here a part whose layer has such a copy goes into the
+# atlas at that size, about six times the pixels. Her layer stays the truth: its own alpha says
+# which of the copy's pixels are this part's (a left eye, not the right; nothing the cleaning took
+# out), and a copy that no longer matches its layer, shrunk, isn't used (the layer was edited
+# since).
+SHARP_SAME = 0.08  # a sharp copy this close to its part (0 to 1, on average, over the part) still matches it:
+                   # a mouth or nose of a few dozen pixels measures 0.06 as taken, a layer from another pass far more
 
 # Her head, straight: a drawing often has her head a little to one side (9.6 degrees on one
 # character, 2.3 on another), and everything after this takes it to be upright: her features slide level, her
@@ -810,6 +825,95 @@ def rig_to_moc3(rig, *, atlas_uv=None, log=print):
 
 
 moc3_emit.rig_to_moc3 = rig_to_moc3  # image2live2d's bundle tool looks it up there
+_build_atlas = moc3_emit.build_atlas
+
+
+def sharp_cell(part, copy, at, per):
+    """A part's picture from its layer's sharp copy: (the picture, the box of her frame it covers
+    from 0 to 1, how far it is from the part on average), or None if the part is empty. copy is the
+    layer at the head pass's own size; its corner is at `at` in her frame and each of its pixels is
+    `per` of hers."""
+    import numpy as np
+    from PIL import ImageChops, ImageFilter
+    W, H = part.size
+    alpha = part.getchannel("A")
+    box = alpha.point(lambda a: 255 if a > 8 else 0).getbbox()  # what the atlas keeps of the part
+    if not box:
+        return None
+    # That box in the copy's own pixels, whole ones, so the copy isn't resampled.
+    sx0, sy0 = math.floor((box[0] - at[0]) / per[0]), math.floor((box[1] - at[1]) / per[1])
+    sx1, sy1 = math.ceil((box[2] - at[0]) / per[0]), math.ceil((box[3] - at[1]) / per[1])
+    cell = Image.new("RGBA", (sx1 - sx0, sy1 - sy0))
+    cell.paste(copy, (-sx0, -sy0))
+    fx0, fy0 = at[0] + sx0 * per[0], at[1] + sy0 * per[1]  # the cell's corner in her frame
+    fx1, fy1 = at[0] + sx1 * per[0], at[1] + sy1 * per[1]
+    # The part's own alpha, at the copy's size: which of the copy's pixels belong to this part.
+    mine = alpha.transform(cell.size, Image.AFFINE, (per[0], 0, fx0, 0, per[1], fy0), resample=Image.BILINEAR)
+    mine = mine.point(lambda a: 255 if a > 8 else 0).filter(ImageFilter.MaxFilter(5))
+    cell.putalpha(ImageChops.multiply(cell.getchannel("A"), mine))
+    # How well it still matches: the cell brought to her frame's own pixels, where the part is, and
+    # both softened a little, so a thin line a fraction of a pixel off doesn't count as a change.
+    soft = cell.filter(ImageFilter.GaussianBlur(0.5 / per[0]))
+    small = soft.transform((box[2] - box[0], box[3] - box[1]), Image.AFFINE,
+                           (1 / per[0], 0, (box[0] - fx0) / per[0], 0, 1 / per[1], (box[1] - fy0) / per[1]), resample=Image.BILINEAR)
+    a = np.asarray(small.filter(ImageFilter.BoxBlur(1)), np.float32) / 255
+    b = np.asarray(part.crop(box).filter(ImageFilter.BoxBlur(1)), np.float32) / 255
+    where = (a[..., 3] > 0.05) | (b[..., 3] > 0.05)
+    apart = float(np.abs(a[..., :3] * a[..., 3:4] - b[..., :3] * b[..., 3:4])[where].mean()) if where.any() else 1.0
+    return cell, (fx0 / W, fy0 / H, fx1 / W, fy1 / H), apart
+
+
+def sharp_atlas(rig, asset_root, *, atlas_size=4096, pad=2):
+    """The model's texture atlas, as image2live2d's build_atlas makes it (whose packing this
+    follows), with her head's parts at the head pass's own size where SHARP has them. Returns the
+    atlas and, for each part, the box of its picture it holds and where in the atlas that is."""
+    if not SHARP:
+        return _build_atlas(rig, asset_root, atlas_size=atlas_size, pad=pad)
+    import numpy as np
+    root = Path(asset_root)
+    textures = {t.id: t for t in rig.textures}
+    crops = []  # [part id, picture, the box of her frame it covers from 0 to 1]
+    for part in (p for p in rig.parts_in_draw_order() if rig.mesh_for(p.id) is not None):
+        path = root / textures[part.texture_id].path
+        if path.stem in SHARP:
+            cell, rect = SHARP[path.stem]
+            crops.append([part.id, cell, *rect])
+            continue
+        img = Image.open(path).convert("RGBA")
+        W, H = img.size
+        ys, xs = np.where(np.array(img)[:, :, 3] > 8)
+        x0, y0, x1, y1 = (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())) if len(xs) else (0, 0, W - 1, H - 1)
+        crops.append([part.id, img.crop((x0, y0, x1 + 1, y1 + 1)), x0 / W, y0 / H, (x1 + 1) / W, (y1 + 1) / H])
+    order = sorted(range(len(crops)), key=lambda i: -crops[i][1].height)  # shelves, the tallest first
+
+    def packed(scale):
+        places, x, y, row = {}, pad, pad, 0
+        for i in order:
+            w, h = max(1, int(crops[i][1].width * scale)), max(1, int(crops[i][1].height * scale))
+            if x + w + pad > atlas_size:
+                x, y, row = pad, y + row + pad, 0
+            if y + h + pad > atlas_size:
+                return None
+            places[i] = (x, y, w, h)
+            x, row = x + w + pad, max(row, h)
+        return places
+
+    scale = 1.0
+    places = packed(scale)
+    while places is None and scale > 0.1:  # everything a little smaller until it fits
+        scale *= 0.8
+        places = packed(scale)
+    if places is None:
+        raise ValueError("her parts don't fit the texture atlas")
+    atlas, remap = Image.new("RGBA", (atlas_size, atlas_size), (0, 0, 0, 0)), {}
+    for i, (part_id, crop, cx0, cy0, cx1, cy1) in enumerate(crops):
+        x, y, w, h = places[i]
+        atlas.alpha_composite(crop.resize((w, h), Image.LANCZOS) if (w, h) != crop.size else crop, (x, y))
+        remap[part_id] = (cx0, cy0, cx1, cy1, x / atlas_size, y / atlas_size, (x + w) / atlas_size, (y + h) / atlas_size)
+    return atlas, remap
+
+
+moc3_emit.build_atlas = sharp_atlas  # ...and this
 # Left roles split into left and right: image2live2d's own (eyes, whites, irises, brows) and ours.
 SIDES = dict(sources._SIDE_FLIP)
 SIDES[SemanticRole.eye_closed_l] = SemanticRole.eye_closed_r
@@ -902,7 +1006,14 @@ def write_layers(name):
     dst = os.path.join(out_dir(name), "layers")
     shutil.rmtree(dst, ignore_errors=True)
     os.makedirs(dst)
-    images = {}
+    images, copies, sharp, changed = {}, {}, [], []
+    if os.path.exists(os.path.join(src, "sharp.json")):  # her head's layers at the head pass's own size
+        with open(os.path.join(src, "sharp.json"), encoding="utf-8") as f:
+            for layer, where in json.load(f).items():
+                path = os.path.join(src, "parts", layer + "@head.png")
+                if layer in info["order"] and os.path.exists(path):
+                    copies[layer] = (Image.open(path).convert("RGBA"), where["at"], where["per"])
+    SHARP.clear()
     for layer in info["order"]:
         if layer not in LEFT_OUT:
             img = Image.open(os.path.join(src, "parts", layer + ".png")).convert("RGBA")
@@ -957,8 +1068,18 @@ def write_layers(name):
                 MIDDLE[file[:-4]] = (((inked[0] + xs.mean()) / part.width, 1 - (inked[1] + ys.mean()) / part.height),
                                      ((inked[0] + xs[low].mean()) / part.width, 1 - inked[3] / part.height))
             part.save(os.path.join(dst, file))
-            print(f"   {file:24} {layer}")
+            cell = sharp_cell(part, *copies[layer]) if layer in copies else None
+            if cell and cell[2] <= SHARP_SAME:
+                SHARP[file[:-4]] = cell[:2]
+                sharp.append(layer)
+            elif cell:
+                changed.append(f"{layer} ({cell[2]:.2f} apart)")
+            print(f"   {file:24} {layer}" + (f"  ({1 / copies[layer][2][0]:.1f} times as sharp)" if file[:-4] in SHARP else ""))
             order += 1
+    if copies:
+        print(f"   in the texture at the head pass's own size: {', '.join(dict.fromkeys(sharp)) or 'none'}")
+    if changed:
+        print(f"   changed since the head pass, so at her frame's size: {', '.join(dict.fromkeys(changed))}")
     return dst
 
 
