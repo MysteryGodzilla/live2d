@@ -85,7 +85,16 @@ def cheeks(eyes, inward=0.0, down=0.0):
     return centres, wide, along, downward
 
 
-def draw(shape, eyes, skin, style=DEFAULT, size=1.0, inward=0.0, down=0.0):
+def slant(along, i, tilt):
+    """One cheek's own directions, its mark tilted `tilt` degrees with the outer end lower (a minus:
+    higher). Mirrored, so both marks lean the same way on her face; i is 0 for the cheek on the left
+    of the picture."""
+    a = math.radians(tilt if i == 1 else -tilt)  # clockwise on the screen lowers a right-hand end
+    way = np.array([along[0] * math.cos(a) - along[1] * math.sin(a), along[0] * math.sin(a) + along[1] * math.cos(a)])
+    return way, np.array([-way[1], way[0]])
+
+
+def draw(shape, eyes, skin, style=DEFAULT, size=1.0, inward=0.0, down=0.0, tilt=0.0):
     """The blush as a layer as big as her frame: RGBA from 0 to 1, shape (H, W, 4)."""
     if style not in STYLES:
         raise ValueError(f"blush style {style}: there are {', '.join(str(k) for k in STYLES)}")
@@ -99,16 +108,17 @@ def draw(shape, eyes, skin, style=DEFAULT, size=1.0, inward=0.0, down=0.0):
     y1 = min(H, int(max(c[1] for c in centres)) + reach + 1)
     ys, xs = np.mgrid[y0:y1, x0:x1].astype(np.float32)
 
-    def oval(centre, half_wide, half_high, peak, firm=1):
-        u = ((xs - centre[0]) * along[0] + (ys - centre[1]) * along[1]) / half_wide
-        v = ((xs - centre[0]) * downward[0] + (ys - centre[1]) * downward[1]) / half_high
+    def oval(centre, half_wide, half_high, peak, firm=1, axes=(along, downward)):
+        ax, dn = axes
+        u = ((xs - centre[0]) * ax[0] + (ys - centre[1]) * ax[1]) / half_wide
+        v = ((xs - centre[0]) * dn[0] + (ys - centre[1]) * dn[1]) / half_high
         q = np.clip(u * u + v * v, 0, 1) ** firm
         return peak * (1 - q) ** 2 if firm == 1 else peak * (1 - q)
 
     glow = np.zeros(xs.shape, np.float32)
     if style in (1, 2, 4):
-        for c in centres:
-            glow = np.maximum(glow, oval(c, WIDE * unit, HIGH * unit, PEAK))
+        for i, c in enumerate(centres):
+            glow = np.maximum(glow, oval(c, WIDE * unit, HIGH * unit, PEAK, axes=slant(along, i, tilt)))
     if style == 4:  # and between them, over her nose
         middle = (centres[0] + centres[1]) / 2
         half = np.linalg.norm(centres[1] - centres[0]) / 2 + 0.25 * unit
@@ -122,11 +132,12 @@ def draw(shape, eyes, skin, style=DEFAULT, size=1.0, inward=0.0, down=0.0):
         im = Image.new("L", ((x1 - x0) * SS, (y1 - y0) * SS))
         d = ImageDraw.Draw(im)
         lean = math.radians(STROKE_LEAN)
-        way = along * math.cos(lean) - downward * math.sin(lean)  # up and to the right
         thick = max(1.0, STROKE_WIDE * unit * SS)
-        for c in centres:
+        for i, c in enumerate(centres):
+            ax, dn = slant(along, i, tilt)
+            way = ax * math.cos(lean) - dn * math.sin(lean)  # up and to the right
             for k in STROKES:
-                mid = c + along * k * STROKE_GAP * unit
+                mid = c + ax * k * STROKE_GAP * unit
                 half = STROKE_LONG * unit / 2 * (1.0 if k == 0 else 0.86)
                 ends = [((p[0] - x0) * SS, (p[1] - y0) * SS) for p in (mid - way * half, mid + way * half)]
                 d.line(ends, fill=255, width=int(round(thick)))
@@ -145,7 +156,7 @@ def draw(shape, eyes, skin, style=DEFAULT, size=1.0, inward=0.0, down=0.0):
     return out
 
 
-def from_picture(shape, eyes, picture, size=1.0, inward=0.0, down=0.0, mirror=False):
+def from_picture(shape, eyes, picture, size=1.0, inward=0.0, down=0.0, mirror=False, tilt=0.0):
     """A blush from your own picture of ONE cheek's mark (RGBA from 0 to 1, clear round it): put
     under each eye, as wide as the kit's own oval, turned with her face. mirror flips it for the
     cheek on the right of the picture."""
@@ -162,7 +173,7 @@ def from_picture(shape, eyes, picture, size=1.0, inward=0.0, down=0.0, mirror=Fa
     whole = Image.new("RGBA", (W, H))
     for i, c in enumerate(centres):
         one = mark.transpose(Image.FLIP_LEFT_RIGHT) if mirror and i == 1 else mark
-        one = one.rotate(turn, resample=Image.BICUBIC, expand=True)
+        one = one.rotate(turn - (tilt if i == 1 else -tilt), resample=Image.BICUBIC, expand=True)
         whole.alpha_composite(one, (int(round(c[0] - one.width / 2)), int(round(c[1] - one.height / 2))))
     out = np.asarray(whole, np.float32) / 255
     out[out[..., 3] < FLOOR] = 0

@@ -164,16 +164,20 @@ def build_command(req):
         return ["split", name, args["mode"]], True
     if step == "parts":
         sub = args.get("command")
-        if sub in ("closed-eyes", "blush-sheet"):
+        if sub == "closed-eyes":
             return ["parts", sub, name], False
-        if sub in ("mouth", "blush", "mouth-sheet"):
+        if sub in ("mouth", "blush", "mouth-sheet", "blush-sheet", "mouth-line"):
             out = ["parts", sub, name]
-            if sub != "mouth-sheet" and args.get("style") not in (None, ""):
+            if sub in ("mouth", "blush") and args.get("style") not in (None, ""):
                 out += ["--style", str(number(args, "style", "Style", 1, 99, whole=True))]
-            if sub != "blush":  # the open mouth's size and place; left out when they are what she has
-                for key, low, high in (("size", 0.3, 3), ("down", -0.3, 0.3), ("right", -0.3, 0.3), ("turn", -45, 45)):
-                    if args.get(key) not in (None, ""):
-                        out += [f"--{key}", f"{number(args, key, key.capitalize(), low, high):g}"]
+            # Size, place and tilt; each left out when it is what she has.
+            ranges = {"mouth": MOUTH_RANGES, "mouth-sheet": MOUTH_RANGES, "blush": BLUSH_RANGES,
+                      "blush-sheet": BLUSH_RANGES, "mouth-line": LINE_RANGES}[sub]
+            for key, low, high in ranges:
+                if args.get(key) not in (None, ""):
+                    out += [f"--{key}", f"{number(args, key, key.capitalize(), low, high):g}"]
+            if sub == "mouth-line" and args.get("mode") in ("try", "back"):
+                out = ["parts", sub, name, "--" + args["mode"]] + (out[3:] if args["mode"] == "try" else [])
             return out, False
         raise Refuse("Parts: not a command the page runs")
     if step == "layers":
@@ -314,9 +318,16 @@ def check_rows():
     threading.Thread(target=work, daemon=True).start()
 
 
+def fresh(url, file):
+    """A picture's address with its time on it, so the browser fetches it again once it is redrawn
+    (the same name each run; a page keeps a picture it has shown, whatever the server says)."""
+    return f"{url}?v={int(os.path.getmtime(file) * 1000)}"
+
+
 def url_for(kind, path):
     """A picture's address if it is there."""
-    return f"/files/{kind}/{path}" if os.path.isfile(os.path.join(kit.characters() if kind == "characters" else kit.out(), *path.split("/"))) else None
+    file = os.path.join(kit.characters() if kind == "characters" else kit.out(), *path.split("/"))
+    return fresh(f"/files/{kind}/{path}", file) if os.path.isfile(file) else None
 
 
 def pictures(name):
@@ -343,23 +354,40 @@ def choices(kind, name):
         for f in os.listdir(folder):
             m = TILE.fullmatch(f)
             if m:
-                url = f"/files/out/parts/{name}-full-{kind}/{f}" if on_her else f"/kit/{kind}/previews/{f}"
+                url = fresh(f"/files/out/parts/{name}-full-{kind}/{f}" if on_her else f"/kit/{kind}/previews/{f}", os.path.join(folder, f))
                 tiles.append({"n": int(m.group(1)), "name": m.group(2).replace("-", " "), "url": url})
     tiles.sort(key=lambda t: t["n"])
-    now_url = f"/files/out/parts/{name}-full-{kind}/now.png" if on_her and os.path.isfile(os.path.join(own, "now.png")) else None
+    now_url = fresh(f"/files/out/parts/{name}-full-{kind}/now.png", os.path.join(own, "now.png")) \
+        if on_her and os.path.isfile(os.path.join(own, "now.png")) else None
     return {"tiles": tiles, "on_her": on_her, "now": current(kind, name), "now_url": now_url,
-            "adjust": mouth_adjust(name) if kind == "mouths" else None}
+            "adjust": kept(kind, name)}
 
 
-def mouth_adjust(name):
-    """Her open mouth's size, place and tilt as layers.json keeps them (parts mouth --size/--down/--right/--turn)."""
-    plain = {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}
+MOUTH_RANGES = (("size", 0.3, 3), ("down", -0.3, 0.3), ("right", -0.3, 0.3), ("turn", -45, 45))
+BLUSH_RANGES = (("size", 0.3, 3), ("in", -1, 1), ("down", -1, 1), ("turn", -60, 60))
+LINE_RANGES = (("size", 0.5, 3), ("thick", 0.3, 4), ("dark", 0, 1))
+# What layers.json keeps for each (parts.py's MOUTH_KEY, BLUSH_KEY and LINE_KEY), and their plain values.
+KEPT = {"mouths": ("open_mouth", {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}),
+        "blushes": ("blush_place", {"size": 1.0, "in": 0.0, "down": 0.0, "turn": 0.0}),
+        "line": ("mouth_line", {"size": 1.0, "thick": 1.0, "dark": 0.35})}
+
+
+def kept(kind, name):
+    """Her open mouth's, blush's or redrawn closed mouth's size and place, as layers.json keeps them."""
+    key, plain = KEPT[kind]
     try:
         with open(os.path.join(live2d.paths(name)["layers"], "layers.json"), encoding="utf-8") as f:
-            kept = json.load(f).get("open_mouth") or {}
+            have = json.load(f).get(key) or {}
     except (OSError, ValueError):
-        return plain
-    return {k: float(kept.get(k, v)) if isinstance(kept.get(k, v), (int, float)) else v for k, v in plain.items()}
+        return dict(plain)
+    return {k: float(have[k]) if isinstance(have.get(k), (int, float)) else v for k, v in plain.items()}
+
+
+def line_state(name):
+    """Her closed mouth: whether it was drawn again (parts mouth-line), how, and its picture."""
+    folder = live2d.paths(name)["layers"]
+    return {"redrawn": os.path.isfile(os.path.join(folder, "mouth-close-drawn.png")), "adjust": kept("line", name),
+            "picture": url_for("out", f"parts/{name}-full-mouth-line.png")}
 
 
 def current(kind, name):
@@ -397,7 +425,7 @@ def one_character(name):
     return {"name": name, "steps": [{"what": w, "done": done, "next": how} for w, done, how in d["steps"]], "next": d["next"],
             "layers": d["order"], "frame": d["frame"], "pictures": pictures(name), "head_psds": psds,
             "built": os.path.exists(d["paths"]["model"]), "model": name + "-full",
-            "mouths": choices("mouths", name), "blushes": choices("blushes", name)}
+            "mouths": choices("mouths", name), "blushes": choices("blushes", name), "line": line_state(name)}
 
 
 def rounds():

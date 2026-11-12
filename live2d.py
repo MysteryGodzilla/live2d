@@ -18,8 +18,9 @@ Python that step needs, and prints the command it runs.
   live2d.py split <name> body          See-through on all of her, and her layers imported
   live2d.py split <name> head [box]    See-through on her head alone, for a sharper face
   live2d.py layers <command> <name> ...    look at and fix her layers (scripts/layers.py lists them)
-  live2d.py parts <command> <name> ...     her closed eyes, open mouth and blush, and numbered sheets
-                                       of the mouths and blushes to choose from (scripts/parts.py)
+  live2d.py parts <command> <name> ...     her closed eyes, open mouth and blush, a firmer closed
+                                       mouth (mouth-line), and numbered sheets of the mouths and
+                                       blushes to choose from (scripts/parts.py)
   live2d.py build <name>               her model: <out>/live2d/<name>-full/model/ and <name>-full.zip
   live2d.py view [port]                the viewer, to try her model: http://127.0.0.1:8777/live2d/
   live2d.py gui [port]                 the same steps as buttons in a page on this PC: http://127.0.0.1:8780/

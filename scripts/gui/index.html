@@ -319,8 +319,8 @@ function randomSeeds() {
 }
 $("main").addEventListener("click", (e) => {
   if (e.target.id === "randseeds") return randomSeeds();
-  if (e.target.id === "mouthreset") {  // her mouth's size, place and tilt back to the kit's own
-    Object.assign(V, { [cur + "|mouth_size"]: "100", [cur + "|mouth_down"]: "0", [cur + "|mouth_right"]: "0", [cur + "|mouth_turn"]: "0" });
+  if (e.target.classList.contains("slidereset")) {  // a set of sliders back to the kit's own
+    for (const [k, v] of Object.entries(JSON.parse(e.target.dataset.reset))) V[cur + "|" + k] = v;
     return drawMain();
   }
   const opt = e.target.closest("button.opt");
@@ -629,39 +629,66 @@ function drawMain() {
         `<img loading="lazy" src="${esc(t.url)}" alt="${esc(what)} ${t.n}, ${esc(t.name)}">` + (t.n === o.now ? `<b class="now">she has this</b>` : "") +
         `<span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>`;
   };
-  // Her open mouth's size, place and tilt: sliders that start at what she has. Each goes into the
-  // commands only when it differs from that, so a plain Draw keeps what she has.
-  const had = (c.mouths && c.mouths.adjust) || { size: 1, down: 0, right: 0, turn: 0 };
-  const SLIDE = [  // key, label, min, max, step, from her saved value to the slider's, back, unit
-    ["size", "Size", 50, 200, 5, (v) => v * 100, (s) => s / 100, "%"],
-    ["down", "Down", -8, 8, 0.25, (v) => v * 100, (s) => s / 100, "% of her face"],
-    ["right", "Right", -8, 8, 0.25, (v) => v * 100, (s) => s / 100, "% of her face"],
-    ["turn", "Tilt", -30, 30, 1, (v) => v, (s) => s, "°"],
-  ];
-  const slideVal = (k) => { const s = SLIDE.find((x) => x[0] === k); return +val("mouth_" + k, s[5](had[k])); };
-  const mouthPlace = () => {
-    const out = {};
-    for (const [k, , , , , to, back] of SLIDE) {
-      const v = +back(slideVal(k)).toFixed(4);
-      if (Math.abs(v - had[k]) > 1e-6) out[k] = String(v);
-    }
-    return out;
+  // Sliders for the size and place of her open mouth, her blush and her closed mouth. They start at
+  // what she has (layers.json keeps it); each goes into the commands only when it differs from
+  // that, so a plain Draw keeps what she has. Reset goes to the kit's own.
+  const pct = [(v) => v * 100, (s) => s / 100], same = [(v) => v, (s) => s];
+  const sliderSet = (prefix, had, spec, plain) => {
+    const at = (k) => { const s = spec.find((x) => x[0] === k); return +val(prefix + k, s[5][0](had[k])); };
+    const place = () => {
+      const out = {};
+      for (const [k, , , , , [, back]] of spec) {
+        const v = +back(at(k)).toFixed(4);
+        if (Math.abs(v - had[k]) > 1e-6) out[k] = String(v);
+      }
+      return out;
+    };
+    const reset = JSON.stringify(Object.fromEntries(spec.map(([k, , , , , [to]]) => [prefix + k, String(+to(plain[k]).toFixed(4))])));
+    const html = `<div class="slides">` + spec.map(([k, label, lo, hi, step, , unit]) =>
+        `<label>${esc(label)} <input type="range" data-k="${prefix}${k}" data-unit="${esc(unit)}" min="${lo}" max="${hi}" step="${step}" value="${at(k)}">` +
+        `<output>${+at(k).toFixed(2)}${esc(unit)}</output></label>`).join("") +
+      `<button type="button" class="slidereset" data-reset="${esc(reset)}" title="Back to the kit's own">Reset</button></div>`;
+    return { html, place };
   };
-  const sliders = `<div class="slides">` + SLIDE.map(([k, label, lo, hi, step, , , unit]) =>
-      `<label>${esc(label)} <input type="range" data-k="mouth_${k}" data-unit="${esc(unit)}" min="${lo}" max="${hi}" step="${step}" value="${slideVal(k)}">` +
-      `<output>${+slideVal(k).toFixed(2)}${esc(unit)}</output></label>`).join("") +
-    `<button type="button" id="mouthreset" title="Size 100%, no move and no tilt">Reset</button></div>` +
-    `<p class="muted">Her mouth's size, place and tilt. "Show them on her face" draws every mouth with these, so you can see them before drawing one. Down and Right move it along her face as it is turned; a minus moves it up or left. Each mouth drawn keeps them, and the sliders start from them next time.</p>`;
+  const mouthS = sliderSet("mouth_", (c.mouths && c.mouths.adjust) || { size: 1, down: 0, right: 0, turn: 0 }, [
+    // key, label, min, max, step, [saved value to slider, back], unit
+    ["size", "Size", 50, 200, 5, pct, "%"],
+    ["down", "Down", -8, 8, 0.25, pct, "% of her face"],
+    ["right", "Right", -8, 8, 0.25, pct, "% of her face"],
+    ["turn", "Tilt", -30, 30, 1, same, "°"],
+  ], { size: 1, down: 0, right: 0, turn: 0 });
+  const blushS = sliderSet("blush_", (c.blushes && c.blushes.adjust) || { size: 1, in: 0, down: 0, turn: 0 }, [
+    ["size", "Size", 50, 200, 5, pct, "%"],
+    ["in", "Closer", -30, 30, 1, pct, "% of an eye"],
+    ["down", "Down", -30, 40, 1, pct, "% of an eye"],
+    ["turn", "Tilt", -40, 40, 1, same, "°"],
+  ], { size: 1, in: 0, down: 0, turn: 0 });
+  const line = c.line || { redrawn: false, adjust: { size: 1, thick: 1, dark: 0.35 } };
+  const lineS = sliderSet("line_", line.adjust, [
+    ["size", "Length", 60, 200, 5, pct, "%"],
+    ["thick", "Thickness", 40, 300, 10, pct, "%"],
+    ["dark", "Darker", 0, 100, 5, pct, "%"],
+  ], { size: 1, thick: 1, dark: 0.35 });
   html.push(stepBox(7, "Closed eyes, open mouth, blush", done[6], [],
     `<p>The drawing has her eyes open and her mouth shut. These draw the other two, and her blush. Click a mouth and a blush below to choose them, then draw each. Each choice replaces the last one. Build again after any of these.</p>` +
     `<h3>Closed eyes</h3>` + A(() => ({ step: "parts", name, args: { command: "closed-eyes" } }), "Closed eyes") +
+    `<h3>Her closed mouth</h3>` +
+    `<p class="muted">Only if her drawn closed mouth is too thin or faint to see from afar: it is drawn again as a firm line along its own curve. Try shows her drawn mouth beside the new one and changes nothing. Draw her open mouth again after redrawing this one, so it fits.</p>` +
+    lineS.html +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-line", mode: "try" }, lineS.place()) }), "Try it") +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-line" }, lineS.place()) }), "Redraw her closed mouth") +
+    (line.redrawn ? A(() => ({ step: "parts", name, args: { command: "mouth-line", mode: "back" } }), "Put her drawn mouth back") : "") +
+    img(line.picture, "Her drawn closed mouth beside the redrawn one") +
     `<h3>Her open mouth</h3>` +
-    sliders +
-    options("mouths", "mouth-sheet", "Mouth", mouthPlace) +
-    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth", style: String(chosen("mouths")) }, mouthPlace()) }), "Draw her mouth") +
+    mouthS.html +
+    `<p class="muted">Her mouth's size, place and tilt. "Show them on her face" draws every mouth with these, so you can see them before drawing one. Down and Right move it along her face as it is turned; a minus moves it up or left. Each mouth drawn keeps them, and the sliders start from them next time.</p>` +
+    options("mouths", "mouth-sheet", "Mouth", mouthS.place) +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth", style: String(chosen("mouths")) }, mouthS.place()) }), "Draw her mouth") +
     `<h3>Her blush</h3>` +
-    options("blushes", "blush-sheet", "Blush") +
-    A(() => ({ step: "parts", name, args: { command: "blush", style: String(chosen("blushes")) } }), "Draw her blush"),
+    blushS.html +
+    `<p class="muted">Her blush's size and place. Closer moves the two marks toward her nose (a minus: apart), Down lowers them (a minus: raises them), and Tilt leans them, the outer ends lower (a minus: higher), mirrored so both lean the same way on her face. "Show them on her face" draws every blush with these.</p>` +
+    options("blushes", "blush-sheet", "Blush", blushS.place) +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "blush", style: String(chosen("blushes")) }, blushS.place()) }), "Draw her blush"),
     first === 6));
 
   // 8. Build

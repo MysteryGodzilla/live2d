@@ -28,6 +28,17 @@ drawing and layers (see layers.py for the layers themselves).
       tilts it the other way), on top of her face's own tilt. They are kept in her
       layers.json, so the next mouth and the mouth sheet start from them; --size 1 --down 0
       --right 0 --turn 0 puts it back
+  mouth-line <name> [--size <times>] [--thick <times>] [--dark <share>] [--try | --back]
+      her closed mouth (mouth_close) drawn again as a firm line along her drawn mouth's own curve,
+      for a drawing whose closed mouth is so thin or faint that it can't be seen from afar and
+      ParamMouthForm hardly shows. --size makes it longer (1.3) or shorter, --thick thicker or
+      thinner than the kit's choice (her own line, and at least a hundredth of her face's width),
+      --dark how far its colour goes from hers toward a dark warm brown (0 to 1; 0.35 when not
+      given). Her head pass's sharp copy is drawn too. --try only makes the picture,
+      <out>/parts/<name>-mouth-line.png, her drawn mouth beside the new one, and changes nothing;
+      --back puts her drawn mouth back. Her drawn mouth is kept beside her layers.json
+      (mouth-close-drawn.png) the first time, so each redraw starts from it. Run `mouth` again
+      after it: the open mouth is fitted to the closed one
   mouth-sheet [<name>] [--size <times>] [--down <share>] [--right <share>]
               [--turn <degrees>]
       the kit's open mouths, numbered: with a name, each one on her own face, in her colours, as
@@ -35,14 +46,18 @@ drawing and layers (see layers.py for the layers themselves).
       them before drawing); with none, on plain skin as mouths/sheet.png. Each picture is also
       saved by itself, <number>-<name>.png, in a folder beside the sheet (the GUI shows those)
   blush <name> [--style <number> | --file <picture>] [--size <times>] [--in <eye widths>]
-               [--down <eye widths>] [--mirror]
+               [--down <eye widths>] [--turn <degrees>] [--mirror]
       her blush as a layer of her own, in place of the one build draws when she has none (the
       kit's style 1). --style is one of blush.py's (blush-sheet shows them); --file is your own
       picture of ONE cheek's mark, put under each eye (--mirror flips it for the other cheek).
       --size makes it bigger or smaller, --in moves the marks toward her nose (or apart, with a
-      minus) and --down lower. `layers remove <name> blush "why"` goes back to build's own
-  blush-sheet [<name>]
-      the blush styles, numbered, each on her own face: <out>/parts/<name>-blushes.png; with no
+      minus), --down lower (a minus: higher) and --turn tilts them, in degrees, the outer ends lower
+      (a minus: higher), mirrored so both lean the same way on her face. They are kept in her
+      layers.json, so the next blush and the blush sheet start from them; --size 1 --in 0 --down 0
+      --turn 0 puts them back. `layers remove <name> blush "why"` goes back to build's own
+  blush-sheet [<name>] [--size <times>] [--in <eye widths>] [--down <eye widths>] [--turn <degrees>]
+      the blush styles, numbered, each on her own face, at the size and place her blush has (or
+      the ones given, to try them first): <out>/parts/<name>-blushes.png; with no
       name, on a plain drawn face as blushes/sheet.png beside this script. Each picture is also
       saved by itself, as the mouths are
   grin <name> [--no-tongue]
@@ -469,6 +484,17 @@ def face_turn(name, info):
     return float(np.degrees(np.arctan2(along[1], along[0])))
 
 
+def last_style(info, pattern):
+    """The kit style she was last given, from her layers' history (pattern's number), or None. So a
+    mouth or blush drawn again with no --style keeps hers."""
+    import re
+    for change in reversed(info.get("changes", [])):
+        m = re.search(pattern, change)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 MOUTH_KEY = "open_mouth"  # layers.json: her open mouth's size and place, {"size", "down", "right", "turn"}
 MOUTH_PLAIN = {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}
 
@@ -534,8 +560,8 @@ def do_mouth(name, style=None, file=None, width=None, flip=False, size=None, dow
         small, pin = file_mouth(file, wide, flip)
         what = f"mouth_open from {os.path.basename(file)}, {wide:.0f} px wide"
     else:
-        style = style or 1
-        unit = (width or MOUTH_W * MOUTH_STYLES.get(style, ("", 1.0))[1]) * face_w * adjust["size"]
+        style = style or last_style(info, r"mouth_open from the kit's open mouth ([0-9]+)") or 1
+        unit =(width or MOUTH_W * MOUTH_STYLES.get(style, ("", 1.0))[1]) * face_w * adjust["size"]
         small, pin = styled_mouth(style, line, unit, flip)
         what = (f"mouth_open from the kit's open mouth {style} ({style_name(style)}), {unit:.0f} px wide, line colour "
                 f"#{''.join(f'{round(v * 255):02x}' for v in line)}")
@@ -551,6 +577,168 @@ def do_mouth(name, style=None, file=None, width=None, flip=False, size=None, dow
     print(f"{name}: mouth_open {w}x{h} at {left},{top}; order {', '.join(order)}")
 
 
+# ---- Her closed mouth, drawn again ---------------------------------------------------------------
+
+LINE_KEY = "mouth_line"  # layers.json: her redrawn closed mouth, {"size", "thick", "dark"}
+LINE_PLAIN = {"size": 1.0, "thick": 1.0, "dark": 0.35}
+LINE_THICK = 0.011       # a redrawn closed mouth is at least this share of her face's width thick
+LINE_DARK = np.array([0.30, 0.15, 0.15], np.float32)  # ...and its colour goes toward this
+LINE_KEEP = "mouth-close-drawn"  # her drawn closed mouth, kept beside her layers.json
+
+
+def kept_mouth(name, info):
+    """Her drawn closed mouth, RGBA from 0 to 1: kept the first time it is redrawn, with its sharp
+    copy and where that lies, so a redraw always starts from her drawing."""
+    keep = os.path.join(L.folder(name), LINE_KEEP + ".png")
+    if not os.path.exists(keep):
+        Image.open(L.part_path(name, "mouth_close")).save(keep)
+        sharp = L.load_sharp(name).get("mouth_close")
+        if sharp and os.path.exists(L.sharp_path(name, "mouth_close")):
+            Image.open(L.sharp_path(name, "mouth_close")).save(os.path.join(L.folder(name), LINE_KEEP + "@head.png"))
+            info[LINE_KEY + "_sharp"] = sharp
+    return np.asarray(Image.open(keep).convert("RGBA"), np.float32) / 255
+
+
+def line_of(mouth):
+    """Her drawn mouth's line: its middle, half its length, its curve (a quadratic in x about the
+    middle), how thick it is, its colour, and the layer with the line painted out. A mouth layer is
+    often a patch of her skin with the line in it, so the line is what is darker than the patch."""
+    solid = mouth[..., 3] > 0.5
+    if not solid.any():
+        sys.exit("her mouth_close layer is empty")
+    light = mouth[..., :3].mean(axis=2)
+    skin_l, ink_l = np.median(light[solid]), np.quantile(light[solid], 0.03)
+    a = mouth[..., 3] * np.clip((skin_l - light) / max(skin_l - ink_l, 0.05), 0, 1)
+    a[a < 0.15] = 0
+    patch = mouth.copy()
+    plain = solid & (a == 0)
+    if plain.sum() > (a > 0).sum():  # a patch of her skin: paint the line out of it
+        patch[a > 0, :3] = np.median(mouth[..., :3][plain], axis=0)
+    else:  # the line alone
+        patch[...] = 0
+    cols = np.nonzero(a.sum(axis=0) > 0.3)[0]
+    if not len(cols):
+        sys.exit("her mouth_close layer is empty")
+    x0, x1 = int(cols.min()), int(cols.max())
+    w = a[:, x0:x1 + 1]
+    s = w.sum(axis=0)
+    cy = (w * np.arange(a.shape[0])[:, None]).sum(axis=0) / np.maximum(s, 1e-6)
+    mid = (x0 + x1) / 2
+    keep = s > 0.3
+    xs = np.arange(x0, x1 + 1)[keep] - mid
+    curve = np.polyfit(xs, cy[keep], 2 if keep.sum() > 4 else 1, w=np.sqrt(s[keep]))
+    strong = a >= np.quantile(a[a > 0], 0.8)
+    return mid, (x1 - x0) / 2, np.poly1d(curve), float(np.median(s[keep])), mouth[..., :3][strong].mean(axis=0), patch
+
+
+def over(top, under):
+    """One RGBA layer over another (straight alpha, 0 to 1)."""
+    ta, ua = top[..., 3:4], under[..., 3:4]
+    a = ta + ua * (1 - ta)
+    out = np.zeros_like(top)
+    out[..., :3] = (top[..., :3] * ta + under[..., :3] * ua * (1 - ta)) / np.maximum(a, 1e-6)
+    out[..., 3:4] = a
+    return out
+
+
+def line_part(shape, pts, widths, rgb, at=(0.0, 0.0), per=1.0):
+    """A stroke through pts (her frame's pixels) as an RGBA layer of `shape`, whose corner is `at` in
+    her frame and whose pixel is `per` of hers (a sharp copy), or her frame itself."""
+    H, W = shape
+    p = (pts - np.asarray(at)) / per
+    wd = widths / per
+    lo = np.maximum(np.floor(p.min(axis=0) - wd.max() - 2).astype(int), 0)
+    hi = np.minimum(np.ceil(p.max(axis=0) + wd.max() + 2).astype(int), [W, H])
+    mask = Image.new("L", tuple((hi - lo) * SS))
+    stroke(ImageDraw.Draw(mask), p, wd, lo)
+    out = np.zeros((H, W, 4), np.float32)
+    out[lo[1]:hi[1], lo[0]:hi[0], 3] = np.asarray(mask.reduce(SS), np.float32) / 255
+    out[..., :3] = rgb
+    out[out[..., 3] == 0] = 0
+    return out
+
+
+def do_mouth_line(name, given=None, trying=False, back=False):
+    info = L.load(name)
+    order = info["order"]
+    if "mouth_close" not in order:
+        if "mouth" not in order:
+            sys.exit(f"{name}: she has no mouth layer")
+        os.replace(L.part_path(name, "mouth"), L.part_path(name, "mouth_close"))
+        L.rename_sharp(name, "mouth", "mouth_close")
+        order[order.index("mouth")] = "mouth_close"
+        L.note(info, "mouth renamed mouth_close: her own small mouth, shown while it's shut")
+    keep = os.path.join(L.folder(name), LINE_KEEP + ".png")
+    if back:
+        if not os.path.exists(keep):
+            sys.exit(f"{name}: her closed mouth is the drawn one already")
+        os.replace(keep, L.part_path(name, "mouth_close"))
+        sharp, kept = L.load_sharp(name), os.path.join(L.folder(name), LINE_KEEP + "@head.png")
+        if os.path.exists(kept) and info.get(LINE_KEY + "_sharp"):
+            os.replace(kept, L.sharp_path(name, "mouth_close"))
+            sharp["mouth_close"] = info.pop(LINE_KEY + "_sharp")
+            L.save_sharp(name, sharp)
+        info.pop(LINE_KEY, None)
+        L.note(info, "mouth_close: her drawn closed mouth back")
+        L.save(name, info)
+        return print(f"{name}: her drawn closed mouth is back")
+
+    adjust = dict(LINE_PLAIN, **info.get(LINE_KEY, {}))
+    adjust.update({k: float(v) for k, v in (given or {}).items() if v is not None})
+    if not (0.5 <= adjust["size"] <= 3 and 0.3 <= adjust["thick"] <= 4 and 0 <= adjust["dark"] <= 1):
+        sys.exit("--size from 0.5 to 3, --thick from 0.3 to 4, --dark from 0 to 1")
+    drawn = kept_mouth(name, info) if not trying else (
+        np.asarray(Image.open(keep).convert("RGBA"), np.float32) / 255 if os.path.exists(keep) else L.read_part(name, "mouth_close"))
+    mid, half, curve, own, colour, patch = line_of(drawn)
+    face = L.read_part(name, "face")[..., 3] > 0.5
+    fx = np.nonzero(face.any(axis=0))[0]
+    face_w = float(fx.max() - fx.min())
+    thick = max(own, LINE_THICK * face_w) * adjust["thick"]
+    rgb = colour * (1 - adjust["dark"]) + LINE_DARK * adjust["dark"]
+    # The same curve, as long as asked: her line scaled about its middle.
+    u = np.linspace(-1, 1, 160)
+    k = adjust["size"]
+    base = curve(0)
+    pts = np.stack([mid + u * half * k, base + k * (curve(u * half) - base)], axis=1)
+    widths = thick * (0.45 + 0.55 * np.cos(np.pi * u / 2) ** 0.7)  # thickest at the middle, thin ends
+    new = over(line_part(drawn.shape[:2], pts, widths, rgb), patch)
+
+    # The picture: her drawn mouth, and the new one, on her face.
+    x0, y0, x1, y1 = face_box(name, lower=True)
+    hidden = L.SHUT | {"mouth_close"}
+    base_rgb, _ = L.composite([(layer, L.read_part(name, layer)[y0:y1, x0:x1]) for layer in order if layer not in hidden])
+    on = lambda m: m[y0:y1, x0:x1, :3] * m[y0:y1, x0:x1, 3:4] + base_rgb * (1 - m[y0:y1, x0:x1, 3:4])
+    sheet([("her drawn mouth", on(drawn)), ("drawn again" + "".join(f", {w} {adjust[w]:g}" for w in LINE_PLAIN), on(new))],
+          out_path(name, "mouth-line"), wide=480, cols=2)
+    if trying:
+        return print(f"{name}: tried only; her layers are as they were")
+
+    L.write_part(name, "mouth_close", new)
+    sharp, where = L.load_sharp(name), info.get(LINE_KEY + "_sharp")
+    if where:  # her head pass's sharp copy, drawn the same at its own size, over its own patch
+        per = where["per"][0]
+        old = line_of(np.asarray(Image.open(os.path.join(L.folder(name), LINE_KEEP + "@head.png")).convert("RGBA"),
+                                 np.float32) / 255)[5]
+        at0 = np.asarray(where["at"], float)
+        lo = np.minimum(at0, np.floor(pts.min(axis=0) - thick - 4))
+        hi = np.maximum(at0 + np.array([old.shape[1], old.shape[0]]) * per, np.ceil(pts.max(axis=0) + thick + 4))
+        size = np.ceil((hi - lo) / per).astype(int)
+        under = np.zeros((size[1], size[0], 4), np.float32)
+        ox, oy = np.round((at0 - lo) / per).astype(int)
+        h, w = min(old.shape[0], size[1] - oy), min(old.shape[1], size[0] - ox)
+        under[oy:oy + h, ox:ox + w] = old[:h, :w]
+        part = over(line_part((size[1], size[0]), pts, widths, rgb, lo, per), under)
+        Image.fromarray(np.clip(part * 255, 0, 255).round().astype(np.uint8), "RGBA").save(L.sharp_path(name, "mouth_close"))
+        sharp["mouth_close"] = {"at": [float(lo[0]), float(lo[1])], "per": list(where["per"])}
+        L.save_sharp(name, sharp)
+    info[LINE_KEY] = adjust
+    L.note(info, f"mouth_close drawn again: a line {2 * half * k:.0f} px long and {thick:.1f} thick along her drawn mouth's "
+                 f"curve, #{''.join(f'{round(v * 255):02x}' for v in rgb)}" + "".join(f", {w} {adjust[w]:g}" for w in LINE_PLAIN))
+    L.save(name, info)
+    print(f"{name}: mouth_close drawn again, {2 * half * k:.0f} px long, {thick:.1f} thick (hers was {own:.1f})"
+          + (", and its sharp copy" if where else "") + ". Run `parts mouth` again to fit her open mouth to it")
+
+
 # ---- Her blush, and the sheets to choose from ----------------------------------------------------
 
 def her_eyes(name, info):
@@ -563,22 +751,45 @@ def her_eyes(name, info):
     return found, face
 
 
-def do_blush(name, style=None, file=None, size=1.0, inward=0.0, down=0.0, mirror=False):
+BLUSH_KEY = "blush_place"  # layers.json: her blush's size and place, {"size", "in", "down", "turn"}
+BLUSH_PLAIN = {"size": 1.0, "in": 0.0, "down": 0.0, "turn": 0.0}
+
+
+def blush_adjust(info, given):
+    """Her blush's size and place: what is given, else what she has (layers.json), else plain."""
+    kept = dict(BLUSH_PLAIN, **info.get(BLUSH_KEY, {}))
+    out = {k: float(given[k] if given.get(k) is not None else kept[k]) for k in BLUSH_PLAIN}
+    if not 0.3 <= out["size"] <= 3:
+        sys.exit("--size: from 0.3 to 3 (1 is the kit's own size)")
+    if abs(out["in"]) > 1 or abs(out["down"]) > 1:
+        sys.exit("--in and --down: eye widths, from -1 to 1 (0.05 is a small step)")
+    if abs(out["turn"]) > 60:
+        sys.exit("--turn: degrees, from -60 to 60")
+    return out
+
+
+def blush_words(adjust):
+    return "".join(f", {k} {adjust[k]:g}" for k in BLUSH_PLAIN if adjust[k] != BLUSH_PLAIN[k])
+
+
+def do_blush(name, style=None, file=None, given=None, mirror=False):
     info = L.load(name)
     eyes, face = her_eyes(name, info)
+    adjust = blush_adjust(info, given or {})
+    size, inward, down, tilt = (adjust[k] for k in ("size", "in", "down", "turn"))
     if file:
-        part = B.from_picture(face.shape, eyes, cut_out(file), size, inward, down, mirror)
+        part = B.from_picture(face.shape, eyes, cut_out(file), size, inward, down, mirror, tilt)
         what = f"blush from {os.path.basename(file)}, under each eye" + (", mirrored for the second" if mirror else "")
     else:
-        style = style or B.DEFAULT
+        style = style or last_style(info, r"blush drawn: the kit's style ([0-9]+)") or B.DEFAULT
         if style not in B.STYLES:
             sys.exit(f"blush style {style}: there are " + ", ".join(f"{k} ({v})" for k, v in B.STYLES.items()))
-        part = B.draw(face.shape, eyes, B.skin_of(face), style, size, inward, down)
+        part = B.draw(face.shape, eyes, B.skin_of(face), style, size, inward, down, tilt)
         what = f"blush drawn: the kit's style {style} ({B.STYLES[style]})"
-    moved = "".join(f", {word} {v:g}" for word, v, rest in (("size", size, 1.0), ("in", inward, 0.0), ("down", down, 0.0)) if v != rest)
     L.write_part(name, "blush", part)
     place(info, "blush", "face")
-    L.note(info, what + moved)
+    info[BLUSH_KEY] = adjust
+    L.note(info, what + blush_words(adjust))
     L.save(name, info)
     ys, xs = np.nonzero(part[..., 3] > 0)
     print(f"{name}: blush, {xs.max() - xs.min() + 1}x{ys.max() - ys.min() + 1} at {xs.min()},{ys.min()}; order {', '.join(info['order'])}")
@@ -697,7 +908,7 @@ def plain_face():
     return rgb, eyes
 
 
-def do_blush_sheet(name=None):
+def do_blush_sheet(name=None, given=None):
     if name is None:  # on a plain face, for the GUI and the README
         face, eyes = plain_face()
         cells = []
@@ -709,6 +920,7 @@ def do_blush_sheet(name=None):
         return sheet(cells, os.path.join(BLUSHES, "sheet.png"), cols=3)
     info = L.load(name)
     eyes, face = her_eyes(name, info)
+    adjust = blush_adjust(info, given or {})
     x0, y0, x1, y1 = face_box(name)
     skin = B.skin_of(face)
     shown = [layer for layer in info["order"] if layer not in L.SHUT | {"blush"}]
@@ -716,7 +928,7 @@ def do_blush_sheet(name=None):
     over = shown.index("face") + 1
     cells = []
     for style, words in B.STYLES.items():
-        mark = B.draw(face.shape, eyes, skin, style)[y0:y1, x0:x1]
+        mark = B.draw(face.shape, eyes, skin, style, *(adjust[k] for k in ("size", "in", "down", "turn")))[y0:y1, x0:x1]
         mark[..., 3] *= face[y0:y1, x0:x1, 3] > 0.5  # as the rig cuts it off at her face
         rgb, _ = L.composite(stack[:over] + [("blush", mark)] + stack[over:])
         cells.append((f"{style}  {words}", rgb))
@@ -896,6 +1108,14 @@ def options(rest, words, flags=()):
     return given
 
 
+def blush_given(o):
+    """--size, --in, --down and --turn as numbers, None where not given."""
+    try:
+        return {k: float(o[k]) if k in o else None for k in ("size", "in", "down", "turn")}
+    except ValueError:
+        sys.exit("--size, --in, --down and --turn take numbers, as 1.2 or -0.05")
+
+
 def placing(o):
     """--size, --down, --right and --turn as numbers, None where not given."""
     try:
@@ -926,18 +1146,26 @@ def main(args):
             sys.exit("give --style or --file, not both")
         do_mouth(rest[0], int(o["style"]) if "style" in o else None, o.get("file"),
                  float(o["width"]) if "width" in o else None, o.get("flip", False), *placing(o))
+    elif cmd == "mouth-line" and rest:
+        o = options(rest[1:], ("size", "thick", "dark"), ("try", "back"))
+        try:
+            given = {k: float(o[k]) if k in o else None for k in ("size", "thick", "dark")}
+        except ValueError:
+            sys.exit("--size, --thick and --dark take numbers, as 1.3")
+        do_mouth_line(rest[0], given, o.get("try", False), o.get("back", False))
     elif cmd == "mouth-sheet" and len(rest) <= 1:
         do_mouth_sheet(*rest)
     elif cmd == "mouth-sheet" and rest and not rest[0].startswith("--"):
         do_mouth_sheet(rest[0], *placing(options(rest[1:], ("size", "down", "right", "turn"))))
     elif cmd == "blush" and rest:
-        o = options(rest[1:], ("style", "file", "size", "in", "down"), ("mirror",))
+        o = options(rest[1:], ("style", "file", "size", "in", "down", "turn"), ("mirror",))
         if "style" in o and "file" in o:
             sys.exit("give --style or --file, not both")
-        do_blush(rest[0], int(o["style"]) if "style" in o else None, o.get("file"), float(o.get("size", 1.0)),
-                 float(o.get("in", 0.0)), float(o.get("down", 0.0)), o.get("mirror", False))
+        do_blush(rest[0], int(o["style"]) if "style" in o else None, o.get("file"), blush_given(o), o.get("mirror", False))
     elif cmd == "blush-sheet" and len(rest) <= 1:
         do_blush_sheet(*rest)
+    elif cmd == "blush-sheet" and rest and not rest[0].startswith("--"):
+        do_blush_sheet(rest[0], blush_given(options(rest[1:], ("size", "in", "down", "turn"))))
     elif cmd == "mouth-masters" and not rest:
         do_mouth_masters()
     else:

@@ -279,6 +279,28 @@ python live2d.py parts mouth akane
 `parts mouth` draws the kit's plain open mouth. [Mouths and blushes](#mouths-and-blushes) has the
 other mouths you can pick, how to use a mouth picture of your own, and the same for her blush.
 
+Her closed eyes also make her smile: with her eyes shut, `ParamEyeLSmile` and `ParamEyeRSmile`
+bend each closed eye's line into an anime "^". With her eyes open they only narrow them a little
+from below. The `happy` expression and the head pat shut her eyes for it.
+
+Some drawings have a closed mouth so thin or faint that it can't be seen from afar, and a smile or
+frown (`ParamMouthForm`) hardly shows on it. `parts mouth-line` draws it again as a firmer line
+along its own curve. Try it first: `--try` makes a picture of her drawn mouth beside the new one
+(`<out>/parts/akane-full-mouth-line.png`) and changes nothing.
+
+```
+python live2d.py parts mouth-line akane --try
+python live2d.py parts mouth-line akane --size 1.2 --thick 1.3
+python live2d.py parts mouth akane
+```
+
+`--size` makes it longer or shorter, `--thick` thicker or thinner than the kit's choice, and
+`--dark` (0 to 1, 0.35 when not given) how far its colour goes from hers toward a dark warm
+brown. The patch of skin her mouth layer may have stays, with her old line painted out. Her drawn
+mouth is kept, so each redraw starts from it, and `--back` puts it back. Draw her open mouth again
+afterwards (the last line above), so it fits the new line; it keeps her style and settings. In the
+GUI, step 7 has sliders for these, with Try it, Redraw and Put back buttons.
+
 **8. Build her model** (no GPU, about a minute).
 
 ```
@@ -390,6 +412,7 @@ strokes. To choose another, or move it:
 | Another style, by its number on the sheet | `parts blush akane --style 4` |
 | It bigger or smaller | `parts blush akane --size 1.2` |
 | The marks nearer her nose, or lower | `parts blush akane --in 0.1 --down 0.05` (in eye widths; a minus goes the other way) |
+| The marks tilted | `parts blush akane --turn 12` (degrees, the outer ends lower; a minus, higher. Mirrored, so both lean the same way on her face) |
 | A blush picture of your own | `parts blush akane --file my-blush.png` (one cheek's mark; it goes under each eye. `--mirror` flips it for the second cheek) |
 | Back to the one `build` draws | `layers remove akane blush "back to the kit's own"` |
 
@@ -397,6 +420,11 @@ The five styles are a soft oval with strokes, the oval alone, the strokes alone,
 her nose, and round spots:
 
 ![The kit's blushes](scripts/blushes/sheet.png)
+
+Her layers.json keeps the size, place and tilt you drew last, and the next `blush` and `blush-sheet`
+start from them; give the same options to `blush-sheet` to see every style that way first. A
+`blush` or `mouth` with no `--style` keeps the style she has. In the GUI these are four sliders
+above the blushes, as for her mouth.
 
 `parts blush` makes her blush a layer of her own, so you can also paint
 it yourself (`layers build`, then `layers pull`).
@@ -474,10 +502,11 @@ Every model the kit builds has the same names, so an app's settings and prompts 
   (`ParamHairFront`, `ParamHairFront2`, `ParamHairBack`, `ParamHairBack2` and so on, as many as
   her hair is wide): the locks beside her face apart from each other, one tail apart from the
   other. Her head's turn and tilt and her body's sway and lean all move them.
-- **Expressions,** held until another is set: `happy`, `tired`, `blushing`, `angry`, `scared`.
+- **Expressions,** held until another is set: `happy` (eyes shut in a "^" smile), `tired`,
+  `blushing`, `angry`, `scared`.
 - **Emotion motions,** a few seconds each: `Happy`, `Sad`, `Angry`, `Awkward`, `Think`, `Surprise`,
   `Question`, `Curious`, and `Idle`. These are the motion group names AIRI plays for each emotion.
-- **Reactions to a click:** `TapHead` (a head pat: eyes shut, blushing, a wavering smile) and
+- **Reactions to a click:** `TapHead` (a head pat: eyes shut in a "^", blushing, a wavering smile) and
   `TapBody` (a poke: a flinch, then a pout). AIRI plays these by name.
 
 ## Changing how she moves

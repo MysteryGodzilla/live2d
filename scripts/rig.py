@@ -240,6 +240,14 @@ SMALL_IRIS = 0.62  # an iris's size at ParamEyeBallForm -1: the small irises of 
 # out and the closed one in over the whole blink, so a half-shut eye was two see-through drawings
 # over each other: fine in a blink, wrong for the heavy lids of "tired".
 SQUINT = 0.2  # ParamEye?Open where her open eye is as shut as it gets before her closed eye shows
+# Her smiling eyes (ParamEyeLSmile, ParamEyeRSmile), as Cubism's own models do them: with her eyes
+# shut, the smile bends her drawn closed eye from its sag into an anime "^", its middle rising above
+# its corners. With her eyes open it only narrows them a little, from below, as a cheek pushes up.
+# image2live2d squashed the open eye (lashes, white and iris) onto an arch, so a smile showed the
+# squashed iris colours under the lash line (first user, 2026-11-13: "the squeeze looks a bit weird
+# and shows the squished eyes underneath"). The expressions that smile shut her eyes for it.
+SMILE_BEND = 0.55  # how far the middle of her closed eye rises at a full smile, in eye heights
+SMILE_OPEN = 0.3   # how far an open eye narrows at a full smile, from below, in eye heights
 # The tilt: 12 degrees at the most, about a point just under her jaw. image2live2d tilts her 20
 # degrees about the base of her neck, which swung her head half a head sideways, off her neck.
 TILT = 0.21  # radians at a full ParamAngleZ
@@ -533,6 +541,41 @@ def lids(rig, fig):
         for kind in ("eye", "eye_white", "pupil"):
             if kind in eye and (kind != "eye" or "eye_closed" in eye):  # with no drawn closed eye, her lashes are it
                 keys[0.0].opacity_overrides[eye[kind][0].id] = 0.0
+        smile_eye(rig, fig, side, eye, drawn)
+
+
+def smile_eye(rig, fig, side, eye, drawn):
+    """Rewrite ParamEye?Smile for one eye (see SMILE_BEND)."""
+    param = by_id(rig, f"ParamEye{side.upper()}Smile")
+    if param is None or "eye_white" not in eye:
+        return
+    _, wy0, _, wy1 = drawn(*eye["eye_white"])
+    high = wy1 - wy0  # her open eye's height
+    for key in param.keyforms:
+        key.mesh_offsets.clear()
+        key.opacity_overrides.clear()
+    keys = {key.value: key for key in param.keyforms}
+    for value in (0.0, 1.0):
+        if value not in keys:
+            keys[value] = Keyform(value=value)
+            param.keyforms.append(keys[value])
+    smiled = keys[1.0]
+    # Open: the lower part of her eye rises, the most at its bottom, nothing at its top.
+    for kind in ("eye", "eye_white", "pupil"):
+        if kind in eye:
+            part, mesh = eye[kind]
+            smiled.mesh_offsets[part.id] = [(0.0, SMILE_OPEN * high * max(0.0, 1 - (y - wy0) / high) ** 1.5)
+                                            for _, y in mesh.vertices]
+    # Shut: her closed eye's line bends up, the most at the middle of the eye. Its corners are her
+    # eye's corners; the drawn line runs a little past the outer one (its droop), which stays.
+    if "eye_closed" in eye:
+        part, mesh = eye["eye_closed"]
+        x0, _, x1, _ = drawn(*eye["eye_closed"])
+        middle = (fig.face[0] + fig.face[2]) / 2 if fig.face else 0.5
+        inner, outer = (x0, x1) if abs(x0 - middle) < abs(x1 - middle) else (x1, x0)
+        corner = inner + (outer - inner) / 1.15  # parts.py draws the lid to 1.15 of the corner-to-corner span
+        lift = lambda x: SMILE_BEND * high * math.sin(math.pi * min(1.0, max(0.0, (x - inner) / (corner - inner))))
+        smiled.mesh_offsets[part.id] = [(0.0, lift(x)) for x, _ in mesh.vertices]
 
 
 def turn_parts(rig, fig, reach):
@@ -1253,7 +1296,9 @@ def times(value):
 
 
 EXPRESSIONS = {
-    "happy": {"ParamEyeLSmile": 1, "ParamEyeRSmile": 1, "ParamMouthForm": 1, "ParamMouthOpenY": 0.2,
+    # Her eyes shut and smiling: the anime "^" (see SMILE_BEND).
+    "happy": {"ParamEyeLSmile": 1, "ParamEyeRSmile": 1, "ParamEyeLOpen": times(0), "ParamEyeROpen": times(0),
+              "ParamMouthForm": 1, "ParamMouthOpenY": 0.2,
               "ParamBrowLY": 0.4, "ParamBrowRY": 0.4, "ParamCheek": 0.3, "ParamAngleZ": 5},
     "tired": {"ParamEyeLOpen": times(0.55), "ParamEyeROpen": times(0.55), "ParamBrowLY": -0.4, "ParamBrowRY": -0.4,
               "ParamBrowLForm": -0.6, "ParamBrowRForm": -0.6, "ParamMouthForm": -0.35, "ParamEyeBallY": -0.5,
@@ -1283,6 +1328,8 @@ TAPS = {
         "ParamBodyAngleY": [(0, 0), (0.3, -4), (0.6, -2), (0.9, -4), (1.2, -2), (2.4, 0)],
         "ParamEyeLOpen": [(0, 1), (0.3, 0), (1.9, 0), (2.3, 1)],
         "ParamEyeROpen": [(0, 1), (0.3, 0), (1.9, 0), (2.3, 1)],
+        "ParamEyeLSmile": [(0, 0), (0.3, 1), (1.9, 1), (2.3, 0)],  # shut as a "^"
+        "ParamEyeRSmile": [(0, 0), (0.3, 1), (1.9, 1), (2.3, 0)],
         "ParamCheek": [(0, 0), (0.4, 1), (2.0, 1), (2.6, 0)],
         "ParamMouthForm": [(0, 0), (0.35, 0.7), (0.9, 0.4), (1.3, 0.75), (1.8, 0.45), (2.5, 0)],
         "ParamBrowLY": [(0, 0), (0.3, -0.3), (1.9, -0.3), (2.4, 0)],
