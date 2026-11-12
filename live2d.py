@@ -83,6 +83,16 @@ def paths(name):
             "model": kit.out("live2d", slug, "model", "model.moc3"), "zip": kit.out("live2d", slug + ".zip")}
 
 
+def has_alpha(picture):
+    """Whether a picture is a PNG with an alpha channel (its header's colour type 4 or 6)."""
+    try:
+        with open(picture, "rb") as f:
+            head = f.read(26)
+    except OSError:
+        return False
+    return head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR" and head[25] in (4, 6)
+
+
 def drawn_how(picture):
     """What draw's prompts.txt, beside a picture, says about it: its prompt, seed, size and model."""
     log = os.path.join(os.path.dirname(os.path.abspath(picture)), "prompts.txt")
@@ -114,11 +124,23 @@ def pick(name, picture):
     except ValueError:  # another drive
         source = os.path.abspath(picture).replace("\\", "/")
     record = {"picked": datetime.date.today().isoformat(), "from": source, **drawn_how(picture)}
+    nxt = f"`live2d.py cutout {name}`"
+    if has_alpha(picture):  # drawn with its own transparency: that is her cut-out
+        python = kit.settings()["comfyui"]["python"]
+        if python and os.path.isfile(python):
+            command = [python, "-I", "-X", "utf8", script("cutout.py"), "--own", picture, p["cutout"], p["drawing"]]
+            done = subprocess.run(command, cwd=kit.project(), capture_output=True, text=True)
+            print((done.stdout + done.stderr).strip())
+            if done.returncode == 0:
+                record["transparent"] = True
+                nxt = f"`live2d.py upscale {name}` (her cut-out came with her drawing: no cutout step)"
+        else:
+            print("her drawing has its own transparency, but ComfyUI's Python, which tidies it, isn't set: the cutout step will cut her out instead")
     with open(os.path.splitext(p["drawing"])[0] + ".json", "w", encoding="utf-8", newline="\n") as f:
         json.dump(record, f, indent=2, ensure_ascii=False)
         f.write("\n")
     print(f"{p['drawing']}: her drawing" + (", and base.json beside it: the prompt and seed it was drawn with"
-                                           if "prompt" in record else "") + f". Next: `live2d.py cutout {name}`")
+                                           if "prompt" in record else "") + f". Next: {nxt}")
 
 
 def init(like=None):
@@ -182,8 +204,15 @@ def init(like=None):
           f"\nNext: `live2d.py check`, then the kit's README ({os.path.join(HERE, 'README.md')})")
 
 
-def cutout(name):
+def cutout(name, again=False):
     p = paths(name)
+    record = os.path.splitext(p["drawing"])[0] + ".json"
+    if not again and os.path.exists(record) and os.path.exists(p["cutout"]):
+        with open(record, encoding="utf-8") as f:
+            if json.load(f).get("transparent"):
+                print(f"{p['cutout']}: her cut-out came with her drawing, which was drawn with a transparent background. "
+                      f"Nothing to cut out. `live2d.py cutout {kit.pose_of(name).removesuffix('/full')} --again` cuts her out with BiRefNet instead")
+                return
     run(comfy_python(), "cutout.py", p["drawing"], p["cutout"])
 
 
@@ -319,15 +348,15 @@ def main(args):
         run(sys.executable, "draw.py", *rest)
     elif step == "pick" and len(rest) == 2:
         pick(*rest)
-    elif step == "cutout" and len(rest) == 1:
-        cutout(rest[0])
+    elif step == "cutout" and (len(rest) == 1 or (len(rest) == 2 and rest[1] == "--again")):
+        cutout(rest[0], again=len(rest) == 2)
     elif step == "upscale" and len(rest) == 1:
         upscale(rest[0])
     elif step == "split" and len(rest) in (2, 6) and rest[1] in ("body", "head"):
         run(seethrough_python(), "split.py", rest[1], kit.pose_of(rest[0]), *rest[2:])
     elif step in ("layers", "parts") and len(rest) >= 2:
         run(seethrough_python(), step + ".py", rest[0], kit.pose_of(rest[1]), *rest[2:])
-    elif step == "parts" and rest in (["mouth-masters"], ["mouth-sheet"]):  # the kit's own, no character
+    elif step == "parts" and rest in (["mouth-masters"], ["mouth-sheet"], ["blush-sheet"]):  # the kit's own, no character
         run(seethrough_python(), "parts.py", rest[0])
     elif step == "build" and len(rest) == 1:
         run(build_python(), "rig.py", "build", kit.pose_of(rest[0]))

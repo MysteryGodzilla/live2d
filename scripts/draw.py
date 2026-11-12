@@ -13,8 +13,11 @@ usage:
   --look       her description here on the command line instead (hair, eyes, clothes, build)
                Round either one the kit puts its own opening and closing (STYLE and POSE below):
                a full-body front view, standing straight, arms a little away from her sides, mouth
-               shut, eyes open, on plain light grey. That pose is the one that splits into layers
-               and rigs well; see the README, "A drawing that rigs"
+               shut, eyes open, on a transparent background. That pose is the one that splits into
+               layers and rigs well; see the README, "A drawing that rigs"
+  --background a plain light grey background instead of a transparent one. Qwen Image 2.1 draws
+               a real alpha channel when it is asked to: `pick` then takes her cut-out from it, with
+               no background to cut away and so no pale rim from one
   --style      an art style from the looks file's "styles": its words take the place of the kit's
                own art style words, and it can name a LoRA or another model with its own settings
   --lora       a LoRA file in <models>/loras/, as file.safetensors or file.safetensors:0.8
@@ -49,9 +52,16 @@ import comfy, kit
 # The opening is two sentences: how she is framed, which the split and the rig depend on, and the
 # art style, which is taste. A style from the looks file replaces only the second.
 FRAME = ("Anime character concept art, full body character reference sheet style, one character standing in a "
-         "relaxed front-facing pose, whole body visible from head to shoes, plain light grey background.")
+         "relaxed front-facing pose, whole body visible from head to shoes, {background}.")
+GREY = "plain light grey background"
 ART = "Clean cel-shaded anime illustration, crisp line art, soft even lighting."
 STYLE = FRAME + " " + ART
+# Qwen Image 2.1's VAE decodes four channels, and draws a real alpha channel when the prompt says so
+# in its model card's words (these two sentences). ComfyUI saves it as an RGBA PNG. What is left of a
+# background is a faint haze, alpha up to about 12%, which `pick` clears (cutout.py --own).
+CLEAR_OPEN = "This is an RGBA image with transparency."
+CLEAR = "transparent background"
+CLEAR_CLOSE = "The image has alpha channel and the background is transparent."
 POSE = ("The character stands straight, facing the viewer, head upright, arms relaxed and held a little away from "
         "the body, hands open and empty, mouth closed, eyes open.")
 EDIT = "Keep the same character, art style, outfit and background. Change only this:"
@@ -243,7 +253,9 @@ def sheet(out, items, cols=4, w=448, h=576):
     for i, (label, path) in enumerate(items):
         args += ["-i", path]
         text = label.replace(":", r"\:").replace("'", "")
-        chains.append(f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:white,"
+        # On light grey, so a transparent picture shows its edges, and an opaque one looks as it is.
+        chains.append(f"color=c=0xdcdce0:s={w}x{h}[bg{i}];[{i}:v]format=rgba,scale={w}:{h}:force_original_aspect_ratio=decrease[s{i}];"
+                      f"[bg{i}][s{i}]overlay=(W-w)/2:(H-h)/2:shortest=1,"
                       f"drawbox=x=0:y=0:w=iw:h=34:color=black@0.65:t=fill,"
                       f"drawtext={f'fontfile={chr(39)}{font}{chr(39)}:' if font else ''}text='{text}':fontcolor=white:fontsize=22:x=8:y=6[v{i}]")
     cols = min(cols, len(items))
@@ -263,7 +275,7 @@ def main(args):
     round_name, given, flags, i = args[0], {}, set(), 1
     while i < len(args):
         key = args[i].lstrip("-")
-        if key in ("runpod", "show"):
+        if key in ("runpod", "show", "background"):
             flags.add(key)
             i += 1
         elif key in WORDS and i + 1 < len(args):
@@ -275,9 +287,13 @@ def main(args):
         sys.exit("give --seeds, and one of --character, --look and --prompt\n\n" + __doc__)
     style = style_of(given["style"]) if "style" in given else {}
     words, negative = look_of(given["character"]) if "character" in given else (given.get("look", "").strip(), "")
+    clear = "background" not in flags
     if words:
         opening = f"{style['words'].strip()} {FRAME}" if style.get("words") else STYLE
+        opening = opening.format(background=CLEAR if clear else GREY)
         prompt = f"{opening} {words} {POSE}"
+        if clear:
+            prompt = f"{CLEAR_OPEN} {prompt} {CLEAR_CLOSE}"
     elif "edit" in given:
         prompt = f"{EDIT} {given['prompt'].strip().rstrip('.')}."
     else:

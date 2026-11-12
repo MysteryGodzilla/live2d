@@ -24,7 +24,8 @@ drawing and layers (see layers.py for the layers themselves).
       --flip mirrors it (a fang on her other side)
   mouth-sheet [<name>]
       the kit's open mouths, numbered: with a name, each one on her own face, in her colours, as
-      <out>/parts/<name>-mouths.png; with none, on plain skin as mouths/sheet.png
+      <out>/parts/<name>-mouths.png; with none, on plain skin as mouths/sheet.png. Each picture is
+      also saved by itself, <number>-<name>.png, in a folder beside the sheet (the GUI shows those)
   blush <name> [--style <number> | --file <picture>] [--size <times>] [--in <eye widths>]
                [--down <eye widths>] [--mirror]
       her blush as a layer of her own, in place of the one build draws when she has none (the
@@ -32,8 +33,10 @@ drawing and layers (see layers.py for the layers themselves).
       picture of ONE cheek's mark, put under each eye (--mirror flips it for the other cheek).
       --size makes it bigger or smaller, --in moves the marks toward her nose (or apart, with a
       minus) and --down lower. `layers remove <name> blush "why"` goes back to build's own
-  blush-sheet <name>
-      the blush styles, numbered, each on her own face: <out>/parts/<name>-blushes.png
+  blush-sheet [<name>]
+      the blush styles, numbered, each on her own face: <out>/parts/<name>-blushes.png; with no
+      name, on a plain drawn face as blushes/sheet.png beside this script. Each picture is also
+      saved by itself, as the mouths are
   grin <name> [--no-tongue]
       for a character drawn with her mouth open (a grin): her drawn mouth is kept as
       layers/mouth-drawn.png and is mouth_close until w-mouth draws one; mouth_open is that mouth
@@ -547,12 +550,26 @@ def label_font(size):
         return ImageFont.load_default()
 
 
+def tile_name(label):
+    """A sheet's label as a file name: "3  smile" -> 3-smile, "hers now" -> now."""
+    words = label.replace("hers now", "now").split()
+    return "-".join(w.strip(",.").lower() for w in words)
+
+
 def sheet(cells, path, wide=340, cols=4):
-    """Numbered pictures side by side: cells are (label, RGB from 0 to 1)."""
+    """Numbered pictures side by side: cells are (label, RGB from 0 to 1). Each picture is also saved
+    by itself in a folder beside the sheet, named for its label (the GUI shows them as choices)."""
     font, bar = label_font(22), 34
     pics = []
+    tiles = os.path.splitext(path)[0] if os.path.basename(path) != "sheet.png" else os.path.join(os.path.dirname(path), "previews")
+    os.makedirs(tiles, exist_ok=True)
+    for old in os.listdir(tiles):
+        if old.endswith(".png"):
+            os.remove(os.path.join(tiles, old))
     for label, rgb in cells:
         im = Image.fromarray((np.clip(rgb, 0, 1) * 255).round().astype(np.uint8), "RGB")
+        im.resize((wide, max(1, round(im.height * wide / im.width))), Image.LANCZOS).save(
+            os.path.join(tiles, tile_name(label) + ".png"), optimize=True)
         im = im.resize((wide, max(1, round(im.height * wide / im.width))), Image.LANCZOS)
         cell = Image.new("RGB", (wide, im.height + bar), (32, 32, 36))
         cell.paste(im, (0, bar))
@@ -615,7 +632,35 @@ def do_mouth_sheet(name=None):
     sheet(cells, out_path(name, "mouths"))
 
 
-def do_blush_sheet(name):
+BLUSHES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blushes")
+
+
+def plain_face():
+    """A plain drawn face, for showing the blush styles before any character has one: skin, a jaw
+    line, two eyes and a small mouth. RGB from 0 to 1, and the two eyes' boxes."""
+    W, H = 340, 250
+    im = Image.new("RGB", (W * SS, H * SS), tuple(round(v * 255) for v in PLAIN_SKIN))
+    d = ImageDraw.Draw(im)
+    eyes = [(92, 62, 142, 112), (198, 62, 248, 112)]
+    for x0, y0, x1, y1 in eyes:
+        d.ellipse([x0 * SS, y0 * SS, x1 * SS, y1 * SS], fill=(255, 255, 255))
+        d.ellipse([(x0 + 12) * SS, (y0 + 6) * SS, (x1 - 12) * SS, (y1 - 2) * SS], fill=(92, 60, 48))
+        d.arc([(x0 - 4) * SS, (y0 - 2) * SS, (x1 + 4) * SS, (y1 + 30) * SS], 200, 340, fill=(52, 34, 34), width=5 * SS)
+    d.arc([150 * SS, 168 * SS, 190 * SS, 186 * SS], 20, 160, fill=(120, 60, 60), width=3 * SS)
+    rgb = np.asarray(im.reduce(SS), np.float32) / 255
+    return rgb, eyes
+
+
+def do_blush_sheet(name=None):
+    if name is None:  # on a plain face, for the GUI and the README
+        face, eyes = plain_face()
+        cells = []
+        for style, words in B.STYLES.items():
+            mark = B.draw(face.shape, eyes, PLAIN_SKIN, style)
+            a = mark[..., 3:4]
+            cells.append((f"{style}  {words}", mark[..., :3] * a + face * (1 - a)))
+        os.makedirs(BLUSHES, exist_ok=True)
+        return sheet(cells, os.path.join(BLUSHES, "sheet.png"), cols=3)
     info = L.load(name)
     eyes, face = her_eyes(name, info)
     x0, y0, x1, y1 = face_box(name)
@@ -835,8 +880,8 @@ def main(args):
             sys.exit("give --style or --file, not both")
         do_blush(rest[0], int(o["style"]) if "style" in o else None, o.get("file"), float(o.get("size", 1.0)),
                  float(o.get("in", 0.0)), float(o.get("down", 0.0)), o.get("mirror", False))
-    elif cmd == "blush-sheet" and len(rest) == 1:
-        do_blush_sheet(rest[0])
+    elif cmd == "blush-sheet" and len(rest) <= 1:
+        do_blush_sheet(*rest)
     elif cmd == "mouth-masters" and not rest:
         do_mouth_masters()
     else:

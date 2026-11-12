@@ -2,6 +2,7 @@
 characters/
 out/
 live2d-kit.json
+live2d-kit.json.*
 .env
 
 __pycache__/

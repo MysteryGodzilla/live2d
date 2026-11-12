@@ -49,7 +49,7 @@ There is also a GUI for people (`live2d.py gui`: the same steps as buttons in a 
 |---|---|---|
 | Draw | `comfy start`, then `draw <round> --character <name> --seeds ...` | The user picks one. Show them the contact sheet. Don't pick for them unless they ask |
 | Pick | `pick <name> <picture>` | The drawing fits "A drawing that rigs" in the README. If it doesn't (arms on her body, legs together, a prop in her hand), say what will go wrong before you go on |
-| Cut-out, upscale | `cutout <name>`, `upscale <name>`, `comfy stop` | `full/cutout.png` shows all of her and no background |
+| Cut-out, upscale | `cutout <name>`, `upscale <name>`, `comfy stop` | `full/cutout.png` shows all of her and no background. A drawing from `draw` has its own transparency: `pick` already made the cut-out, so `cutout` does nothing and only `upscale` is needed |
 | Split | `split <name> body` | It prints her layers. Expect about 17: hair, face, eyes, brows, nose, mouth, neck, clothes, arms, legs, shoes |
 | Check layers | `layers check <name>` | The count is a few thousand pixels of thin outline. Look at the picture it saves. A solid block of red is a layer covering what it shouldn't |
 | Head pass | `split <name> head`, `layers scale <name> 2`, `layers head ...`, `layers under <name> neck face` | `layers check` again: the count should not jump. Her face layer should line up with her drawing's face |

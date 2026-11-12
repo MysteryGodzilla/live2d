@@ -14,7 +14,11 @@ redraw on grey (colours matched back, as it comes out a little darker) and keeps
 pixels inside her, so a grainy redraw of an edit doesn't show. The model is birefnet.safetensors
 (Hugging Face Comfy-Org/BiRefNet, MIT) in the models folder's background_removal/.
   ... cutout.py --tidy <in.png> <out.png> ...
-tidies a picture drawn with its own transparency (no ComfyUI needed). Also writes <out>.mask.png into <out>/cutout/ for checking."""
+tidies a picture drawn with its own transparency (no ComfyUI needed). Also writes <out>.mask.png into <out>/cutout/ for checking.
+  cutout.py --own <in.png> <cutout.png> <drawing.png>
+a character's drawing that came with its own transparency (`live2d.py pick` runs it): the tidied
+picture is her cut-out, and the same on light grey is her drawing, as See-through and the layer
+check see it (on white, See-through's layers came out a little less exact in a test, 2026-11-13). No ComfyUI needed. It stops with a message if the picture has no real transparency."""
 import base64, io, os, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -134,7 +138,31 @@ def tidy(im):
     return Image.fromarray(np.dstack([rgba[..., :3], a * 255]).round().astype(np.uint8), "RGBA")
 
 
+GREY = (220, 220, 224)  # --own: her drawing goes on this, the light grey draw --background asks for
+OWN = 0.6  # --own: the share of a picture's border that has to be clear for its transparency to be real
+
+
+def own(src_path, cutout_path, drawing_path):
+    im = Image.open(src_path)
+    if im.mode != "RGBA":
+        sys.exit(f"{src_path}: it has no alpha channel")
+    a = np.asarray(im.getchannel("A"), dtype=np.float32) / 255
+    border = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
+    if (border < HAZE).mean() < OWN:
+        sys.exit(f"{src_path}: its background isn't transparent ({(border < HAZE).mean():.0%} of its border is clear)")
+    cut = tidy(im)
+    cut.save(cutout_path, optimize=True)
+    grey = Image.new("RGBA", cut.size, GREY + (255,))
+    grey.alpha_composite(cut)
+    grey.convert("RGB").save(drawing_path, optimize=True)
+    solid = np.asarray(cut.getchannel("A")) > 127
+    print(f"{cutout_path}: her cut-out, from the drawing's own transparency ({solid.mean():.0%} of the picture is her)")
+    print(f"{drawing_path}: her drawing, on light grey")
+
+
 def main(args):
+    if args[:1] == ["--own"] and len(args) == 4:
+        return own(*args[1:])
     if args[:1] == ["--tidy"]:
         for src_path, out_path in zip(args[1::2], args[2::2]):
             tidy(Image.open(src_path)).save(out_path, optimize=True)

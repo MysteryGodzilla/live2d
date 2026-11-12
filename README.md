@@ -134,7 +134,8 @@ commands, not the page.
 The split and the rig expect a drawing like this:
 
 - One character, whole body from head to shoes, standing, seen from the front.
-- A plain light grey background. White works less well: light hair fades into it.
+- A transparent background, which `draw` asks for. If you bring your own picture: a plain light
+  grey background. White works less well: light hair fades into it.
 - Arms a little away from her sides, hands open and empty. An arm that lies on her body can't be
   cut away from it.
 - Legs apart enough to see a gap between them. Then each leg gets its own knee.
@@ -175,6 +176,10 @@ Add `--show` to either one to see the whole prompt without drawing anything.
 Pictures and a contact sheet go to `<out>/akane-round1/`. Run more seeds or change the words until
 one is right. `prompts.txt` in the round's folder records the prompt and seed of every picture.
 
+The pictures have a transparent background. Qwen Image 2.1 draws a real alpha channel when the
+prompt asks for one, so her edges were never mixed with a background and nothing has to be cut
+away. The contact sheet shows them on grey. `--background` draws on plain light grey instead.
+
 **2. Pick one.**
 
 ```
@@ -184,7 +189,12 @@ python live2d.py pick akane <out>/akane-round1/akane-round1-3.png
 It becomes `<characters>/akane/full/base.png`. Beside it, `base.json` keeps the prompt, seed and
 model it was drawn with, so you can draw her again or draw a change to her later.
 
-**3. Cut her out and upscale her** (GPU, about two minutes together).
+A picture with a transparent background is also her cut-out: `pick` writes `full/cutout.png`
+from it (the faint haze left over the background cleared), and her drawing on light grey as
+`base.png`. Go straight to `upscale` in step 3.
+
+**3. Cut her out and upscale her** (GPU, about two minutes together). A drawing picked with its own
+transparency is already cut out: `cutout` says so and does nothing, so run only `upscale`.
 
 ```
 python live2d.py cutout akane
@@ -194,6 +204,12 @@ python live2d.py comfy stop
 
 Look at `full/cutout.png`: she should be whole, with no background left. Stop ComfyUI before the
 next step. The next step needs the whole card.
+
+`cutout` is for a picture that has a background: your own, or one drawn with `--background`. It
+uses BiRefNet and takes the background's colour back out of her edges. It does that well, but a
+drawn transparency is cleaner: on the same drawing, BiRefNet's cut left about 1,000 near-white
+pixels on her edges, the drawn one 11. `cutout <name> --again` cuts a transparent drawing out
+with BiRefNet anyway.
 
 **4. Split her into layers** (GPU, about 10 minutes).
 
@@ -319,6 +335,8 @@ python live2d.py parts blush-sheet akane
 ```
 
 Each saves a numbered picture: `<out>/parts/akane-full-mouths.png` and `akane-full-blushes.png`.
+In the GUI (step 7) the mouths and blushes are pictures to click, on plain skin until you press
+"Show them on her face"; the one she has now is marked.
 
 **Her open mouth.** Three ways:
 
@@ -353,7 +371,11 @@ strokes. To choose another, or move it:
 | Back to the one `build` draws | `layers remove akane blush "back to the kit's own"` |
 
 The five styles are a soft oval with strokes, the oval alone, the strokes alone, a flush across
-her nose, and round spots. `parts blush` makes her blush a layer of her own, so you can also paint
+her nose, and round spots:
+
+![The kit's blushes](scripts/blushes/sheet.png)
+
+`parts blush` makes her blush a layer of her own, so you can also paint
 it yourself (`layers build`, then `layers pull`).
 
 After any of these, run `build` again and reload the viewer's page.

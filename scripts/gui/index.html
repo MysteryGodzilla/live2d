@@ -76,6 +76,12 @@ summary { cursor: pointer; font-weight: 600; }
 .pics button.pic img { display: block; width: 100%; border: 0; }
 .pics button.pic span { display: block; font-size: 12px; padding: 2px 4px; }
 .pics .big { max-height: 520px; }
+.opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }
+button.opt { padding: 0; min-height: 0; overflow: hidden; text-align: left; position: relative; }
+button.opt img { display: block; width: 100%; height: auto; border: 0; background: var(--code-bg); }
+button.opt span { display: block; font-size: 13px; padding: 3px 6px; }
+button.opt.sel { outline: 3px solid var(--accent); border-color: var(--accent); }
+button.opt .now { position: absolute; top: 4px; right: 4px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--ok); color: var(--panel); }
 .checker { background-color: #fff; background-image: linear-gradient(45deg, #c8c8c8 25%, transparent 25%, transparent 75%, #c8c8c8 75%), linear-gradient(45deg, #c8c8c8 25%, transparent 25%, transparent 75%, #c8c8c8 75%); background-size: 20px 20px; background-position: 0 0, 10px 10px; display: inline-block; max-width: 100%; }
 .checker img { display: block; max-height: 520px; max-width: 100%; border: 0; background: none; }
 pre.out { background: var(--code-bg); padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; margin: 6px 0; }
@@ -240,7 +246,7 @@ function previews() {
 }
 function setBusy(busy) {
   document.body.classList.toggle("busy", busy);
-  document.querySelectorAll("button.run, button.pic").forEach((b) => { b.disabled = busy; });
+  document.querySelectorAll("button.run, button.pic, button.opt").forEach((b) => { b.disabled = busy; });
 }
 async function runReq(req, gpu) {
   try {
@@ -257,6 +263,13 @@ async function runReq(req, gpu) {
   }
 }
 $("main").addEventListener("click", (e) => {
+  const opt = e.target.closest("button.opt");
+  if (opt) {  // a mouth or blush chosen: mark it, and the Draw button's command follows
+    V[cur + "|" + opt.dataset.kind + "_style"] = opt.dataset.n;
+    opt.parentElement.querySelectorAll("button.opt").forEach((b) => b.classList.toggle("sel", b === opt));
+    previews();
+    return;
+  }
   const pic = e.target.closest("button.pic");
   if (pic) {
     const c = charData(cur);
@@ -392,6 +405,8 @@ function drawMain() {
       : `<textarea data-k="look" placeholder="A young woman with long red hair in two pigtails, blue eyes, a white lab coat over a black t-shirt, ...">${esc(val("look", ""))}</textarea>` +
         `<p class="muted">Hair, eyes, build and clothes, from head to shoes. Leave out the pose and the background: the kit adds those.</p>`) +
     `<div class="row"><label>Seeds ${input("seeds", "1,2,3,4", 'size="14"')}</label><label>Round name ${input("round", name + "-round" + free, 'size="22"')}</label></div>` +
+    `<div class="row"><label><input type="checkbox" data-k="grey" ${val("grey", false) ? "checked" : ""}> A plain grey background instead of a transparent one</label></div>` +
+    `<p class="muted">A transparent background means no cut-out step later: picking the picture makes her cut-out from it.</p>` +
     `<h3>ComfyUI</h3><p class="muted">The drawing, cut-out and upscale steps need it running.</p>` +
     comfy("start", "Start ComfyUI") + comfy("stop", "Stop ComfyUI") +
     `<h3>Draw</h3>` +
@@ -399,6 +414,7 @@ function drawMain() {
       const args = { round: val("round", name + "-round" + free), seeds: val("seeds", "1,2,3,4") };
       if (val("mode", lookNames.includes(name) ? "file" : "text") === "file") args.character = val("char", lookNames.includes(name) ? name : lookNames[0]);
       else args.look = val("look", "");
+      if (val("grey", false)) args.background = true;
       return { step: "draw", name, args };
     }, "Draw", { gpu: true }) +
     (latestMine && latestMine.sheet ? `<p>Contact sheet of the latest round, ${esc(latestMine.name)}:</p>` + img(latestMine.sheet, "Contact sheet of " + latestMine.name, "big") : ""),
@@ -419,7 +435,7 @@ function drawMain() {
 
   // 3. Cut out and upscale
   html.push(stepBox(3, "Cut out and upscale", done[2], ["GPU", "about 2 minutes"],
-    `<p>Her drawing without its background, then twice and four times the size. Look at the cut-out: she should be whole, with no background left. Stop ComfyUI before the next step: it needs the whole card.</p>` +
+    `<p>Her drawing without its background, then twice and four times the size. A drawing with a transparent background was already cut out when you picked it: only Upscale is needed. Look at the cut-out: she should be whole, with no background left. Stop ComfyUI before the next step: it needs the whole card.</p>` +
     GPU_NOTE + comfy("start", "Start ComfyUI") +
     A(() => ({ step: "cutout", name }), "Cut out", { gpu: true }) +
     A(() => ({ step: "upscale", name }), "Upscale", { gpu: true }) +
@@ -487,18 +503,26 @@ function drawMain() {
     first === 5));
 
   // 7. Closed eyes, mouth, blush
-  const mouthN = (k) => { const v = val(k, ""); return v === "" ? {} : { style: v }; };
+  // Each mouth or blush as a picture to click: her own face's once her sheet is made, else the kit's.
+  const chosen = (kind) => val(kind + "_style", (c[kind] && c[kind].now) || 1);
+  const options = (kind, sheetCmd, what) => {
+    const o = c[kind] || { tiles: [] };
+    const sel = +chosen(kind);
+    return `<p class="muted">${o.on_her ? "On her own face. Click one to choose it, then draw it." : "On plain skin, as the kit draws them. Click one to choose it, or see them on her own face first."}</p>` +
+      A(() => ({ step: "parts", name, args: { command: sheetCmd } }), o.on_her ? "Show them on her face again" : "Show them on her face") +
+      `<div class="opts">` + o.tiles.map((t) => `<button type="button" class="opt${t.n === sel ? " sel" : ""}" data-kind="${kind}" data-n="${t.n}" title="${esc(what)} ${t.n}: ${esc(t.name)}">` +
+        `<img loading="lazy" src="${esc(t.url)}" alt="${esc(what)} ${t.n}, ${esc(t.name)}">` + (t.n === o.now ? `<b class="now">she has this</b>` : "") +
+        `<span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>`;
+  };
   html.push(stepBox(7, "Closed eyes, open mouth, blush", done[6], [],
-    `<p>The drawing has her eyes open and her mouth shut. These draw the other two. Look at the mouths and the blushes on her own face, then choose one by its number on the sheet. Each choice replaces the last one. Build again after any of these.</p>` +
+    `<p>The drawing has her eyes open and her mouth shut. These draw the other two, and her blush. Click a mouth and a blush below to choose them, then draw each. Each choice replaces the last one. Build again after any of these.</p>` +
     `<h3>Closed eyes</h3>` + A(() => ({ step: "parts", name, args: { command: "closed-eyes" } }), "Closed eyes") +
     `<h3>Her open mouth</h3>` +
-    A(() => ({ step: "parts", name, args: { command: "mouth-sheet" } }), "Show the mouths") + img(p.mouths, "The open mouths on her face, numbered", "big") +
-    `<div class="row"><label>Number ${input("mouth_style", "", 'type="number" min="1" max="99" size="4" style="width:5em"')}</label><span class="muted">Leave it empty for the plain mouth.</span></div>` +
-    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth" }, mouthN("mouth_style")) }), "Draw her mouth") +
+    options("mouths", "mouth-sheet", "Mouth") +
+    A(() => ({ step: "parts", name, args: { command: "mouth", style: String(chosen("mouths")) } }), "Draw her mouth") +
     `<h3>Her blush</h3>` +
-    A(() => ({ step: "parts", name, args: { command: "blush-sheet" } }), "Show the blushes") + img(p.blushes, "The blushes on her face, numbered", "big") +
-    `<div class="row"><label>Number ${input("blush_style", "", 'type="number" min="1" max="99" size="4" style="width:5em"')}</label><span class="muted">Leave it empty for the one Build draws.</span></div>` +
-    A(() => ({ step: "parts", name, args: Object.assign({ command: "blush" }, mouthN("blush_style")) }), "Draw her blush"),
+    options("blushes", "blush-sheet", "Blush") +
+    A(() => ({ step: "parts", name, args: { command: "blush", style: String(chosen("blushes")) } }), "Draw her blush"),
     first === 6));
 
   // 8. Build

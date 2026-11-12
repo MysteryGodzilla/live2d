@@ -124,15 +124,16 @@ def build_command(req):
         name = name or None
         rnd = text(args, "round", "Round name", ROUND, 1, 41)
         seeds = text(args, "seeds", "Seeds", SEEDS, 1, 200)
+        grey = ["--background"] if args.get("background") is True else []
         if args.get("look"):
             look = text(args, "look", "Look", None, 5, 1500)
             if look.startswith("-") or any(ord(c) < 32 for c in look):
                 raise Refuse("Look: plain words, not starting with a dash")
-            return ["draw", rnd, "--look", look, "--seeds", seeds], True
+            return ["draw", rnd, "--look", look, "--seeds", seeds] + grey, True
         who = text(args, "character", "Character", CHARACTER, 1, 72) if args.get("character") else (name and character(name))
         if not who:
             raise Refuse("Write a look, or pick a character from the looks file")
-        return ["draw", rnd, "--character", who, "--seeds", seeds], True
+        return ["draw", rnd, "--character", who, "--seeds", seeds] + grey, True
     if step == "pick":
         name = character(name)
         picture = args.get("picture")
@@ -313,6 +314,48 @@ def pictures(name):
             "sheet": url_for("out", f"live2d/checks/{slug}-sheet.png")}
 
 
+TILE = re.compile(r"([0-9]{1,2})-([a-z0-9-]+)\.png")
+
+
+def choices(kind, name):
+    """The open mouths or blushes to choose from, each with its picture: her own face's if her sheet
+    was made (parts mouth-sheet / blush-sheet), else the kit's own on plain skin. And which one she
+    has now, read from her layers' history."""
+    own = os.path.join(kit.out("parts"), f"{name}-full-{kind}")
+    kits = os.path.join(kit.SCRIPTS, kind, "previews")
+    on_her = os.path.isdir(own) and any(TILE.fullmatch(f) for f in os.listdir(own))
+    folder = own if on_her else kits
+    tiles = []
+    if os.path.isdir(folder):
+        for f in os.listdir(folder):
+            m = TILE.fullmatch(f)
+            if m:
+                url = f"/files/out/parts/{name}-full-{kind}/{f}" if on_her else f"/kit/{kind}/previews/{f}"
+                tiles.append({"n": int(m.group(1)), "name": m.group(2).replace("-", " "), "url": url})
+    tiles.sort(key=lambda t: t["n"])
+    now_url = f"/files/out/parts/{name}-full-{kind}/now.png" if on_her and os.path.isfile(os.path.join(own, "now.png")) else None
+    return {"tiles": tiles, "on_her": on_her, "now": current(kind, name), "now_url": now_url}
+
+
+def current(kind, name):
+    """The number of the mouth or blush she has now, from her layers.json: None for a picture of
+    your own or none at all. A character with no blush layer gets build's own, style 1."""
+    try:
+        with open(os.path.join(live2d.paths(name)["layers"], "layers.json"), encoding="utf-8") as f:
+            info = json.load(f)
+    except (OSError, ValueError):
+        return None
+    pattern = r"mouth_open from the kit's open mouth ([0-9]+)" if kind == "mouths" else r"blush drawn: the kit's style ([0-9]+)"
+    for change in reversed(info.get("changes", [])):
+        if kind == "mouths" and "mouth_open" in change and "from" in change:
+            m = re.search(pattern, change)
+            return int(m.group(1)) if m else (1 if "the shared open mouth" in change else None)
+        if kind == "blushes" and change.split(": ", 1)[-1].startswith("blush"):
+            m = re.search(pattern, change)
+            return int(m.group(1)) if m else None
+    return 1 if kind == "blushes" and "blush" not in info.get("order", []) else None
+
+
 def characters_found():
     folder = kit.characters()
     if not os.path.isdir(folder):
@@ -328,7 +371,8 @@ def one_character(name):
     psds = sorted(f for f in os.listdir(folder) if f.endswith(".psd") and "head" in f) if os.path.isdir(folder) else []
     return {"name": name, "steps": [{"what": w, "done": done, "next": how} for w, done, how in d["steps"]], "next": d["next"],
             "layers": d["order"], "frame": d["frame"], "pictures": pictures(name), "head_psds": psds,
-            "built": os.path.exists(d["paths"]["model"]), "model": name + "-full"}
+            "built": os.path.exists(d["paths"]["model"]), "model": name + "-full",
+            "mouths": choices("mouths", name), "blushes": choices("blushes", name)}
 
 
 def rounds():
@@ -375,8 +419,10 @@ def state(recheck=False):
 
 FILE_PATTERNS = {
     "characters": re.compile(r"[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*/(base|cutout|base-2x)\.png"),
-    "out": re.compile(r"(layers|parts|live2d/checks)/[A-Za-z0-9._-]+\.png|[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+\.(png|jpg)"),
+    "out": re.compile(r"(layers|parts|live2d/checks)/[A-Za-z0-9._-]+\.png|parts/[a-z0-9_-]+-full-(mouths|blushes)/[a-z0-9-]+\.png"
+                      r"|[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+\.(png|jpg)"),
 }
+KIT_PREVIEW = re.compile(r"/kit/(mouths|blushes)/previews/([0-9]{1,2}-[a-z0-9-]+\.png)")
 
 
 class Handler(view.Viewer):
@@ -419,6 +465,9 @@ class Handler(view.Viewer):
                     or not FILE_PATTERNS[kind].fullmatch(rest):
                 return self.send(404, b"not a picture of the project")
             return self.file(kit.characters() if kind == "characters" else kit.out(), rest)
+        m = KIT_PREVIEW.fullmatch(path)
+        if m:  # the kit's own previews of the mouths and blushes
+            return self.file(os.path.join(kit.SCRIPTS, m.group(1), "previews"), m.group(2))
         if path == "/live2d" or path.startswith("/live2d/"):
             return view.Viewer.do_GET(self)
         self.send(404, b"not found")
