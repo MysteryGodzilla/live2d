@@ -21,6 +21,7 @@ Python that step needs, and prints the command it runs.
                                        of the mouths and blushes to choose from (scripts/parts.py)
   live2d.py build <name>               her model: <out>/live2d/<name>-full/model/ and <name>-full.zip
   live2d.py view [port]                the viewer, to try her model: http://127.0.0.1:8777/live2d/
+  live2d.py gui [port]                 the same steps as buttons in a page on this PC: http://127.0.0.1:8780/
 
 <name> is a character's folder under the project's characters folder; her full-size drawing is
 meant (<name>/full) unless you write another, <name>/<pose>.
@@ -201,13 +202,11 @@ def have(python, *modules):
     return "" if done.returncode == 0 else "its Python can't import them: " + (done.stderr.strip().splitlines() or ["?"])[-1]
 
 
-def check():
+def check_data():
+    """What `check` shows, as data: the project's paths, a row per thing (what, the problem or "", the
+    steps that need it) and the GPU line if there is one."""
     s = kit.settings()
     found = os.path.exists(os.path.join(kit.project(), kit.FILE))
-    print(f"project: {kit.project()}" + ("" if found else f"  (no {kit.FILE} here or above: the kit's own defaults)"))
-    print(f"characters: {kit.characters()}" + ("" if os.path.isdir(kit.characters()) else "  (not there yet)"))
-    print(f"output: {kit.out()}")
-    print(f"looks: {kit.looks_file()}" + ("" if os.path.exists(kit.looks_file()) else "  (not there: `live2d.py init` makes one, or draw with --look)") + "\n")
     rows = []
 
     def row(what, problem, steps):
@@ -236,18 +235,33 @@ def check():
         or ("" if os.path.isfile(os.path.join(HERE, "vendor", "image2live2d", "pipeline.py")) else "the kit's vendor folder is missing"),
         "build" + (f"  ({builder})" if builder and builder != t["python"] else ""))
     row("ffmpeg", "" if s.get("ffmpeg") or shutil.which("ffmpeg") else "not on the PATH", "draw's contact sheet (the pictures are made without it)")
+    gpu, gpu_line = shutil.which("nvidia-smi"), ""
+    if gpu:
+        said = subprocess.run([gpu, "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader"], capture_output=True, text=True)
+        gpu_line = said.stdout.strip()
+    return {"project": kit.project(), "found": found, "characters": kit.characters(), "output": kit.out(),
+            "looks": kit.looks_file(), "rows": rows, "gpu": gpu_line, "has_gpu": bool(gpu)}
+
+
+def check():
+    d = check_data()
+    print(f"project: {d['project']}" + ("" if d["found"] else f"  (no {kit.FILE} here or above: the kit's own defaults)"))
+    print(f"characters: {d['characters']}" + ("" if os.path.isdir(d["characters"]) else "  (not there yet)"))
+    print(f"output: {d['output']}")
+    print(f"looks: {d['looks']}" + ("" if os.path.exists(d["looks"]) else "  (not there: `live2d.py init` makes one, or draw with --look)") + "\n")
+    rows = d["rows"]
     wide = max(len(r[0]) for r in rows)
     for what, problem, steps in rows:
         print(f"{what:{wide}}  {'ok' if not problem else 'MISSING: ' + problem:58}  for: {steps}")
-    gpu = shutil.which("nvidia-smi")
-    if gpu:
-        said = subprocess.run([gpu, "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader"], capture_output=True, text=True)
-        print(f"\nGPU: {said.stdout.strip()}  (the GPU steps want it to themselves: close what else is on it)")
+    if d["has_gpu"]:
+        print(f"\nGPU: {d['gpu']}  (the GPU steps want it to themselves: close what else is on it)")
     if any(problem for _, problem, _ in rows):
         print(f"\nWhat to download and where it goes: {os.path.join(HERE, 'README.md')}, \"What you need\"")
 
 
-def status(name):
+def status_data(name):
+    """What `status` shows, as data: her folders, each step (what, done, how) in order, her layers and
+    what comes next."""
     p = paths(name)
     info = {}
     if os.path.exists(os.path.join(p["layers"], "layers.json")):
@@ -269,21 +283,24 @@ def status(name):
          f"`live2d.py parts closed-eyes {n}` and `live2d.py parts mouth {n}`"),
         ("model built", os.path.exists(p["model"]), f"`live2d.py build {n}`"),
     ]
-    print(f"{n}: her files are in {os.path.dirname(p['drawing'])} and {p['layers']}")
-    nxt = None
-    for what, done, how in steps:
-        print(f"  [{'x' if done else ' '}] {what}")
-        if not done and nxt is None:
-            nxt = how
-    if order:
-        print(f"  layers ({info['frame'][0]}x{info['frame'][1]}): {', '.join(order)}")
-    if nxt:
-        print(f"next: {nxt}")
-    else:
+    nxt = next((how for _, done, how in steps if not done), None)
+    if not nxt:
         newer = [f for f in (os.path.join(p["layers"], "layers.json"), os.path.join(p["layers"], "live2d.json"))
                  if os.path.exists(f) and os.path.getmtime(f) > os.path.getmtime(p["model"])]
-        print("next: " + (f"her layers changed since her model was built: `live2d.py build {n}`" if newer else
-                          f"try her in the viewer (`live2d.py view`); her zip for an app is {p['zip']}"))
+        nxt = (f"her layers changed since her model was built: `live2d.py build {n}`" if newer else
+               f"try her in the viewer (`live2d.py view`); her zip for an app is {p['zip']}")
+    return {"name": n, "paths": p, "files": os.path.dirname(p["drawing"]), "steps": steps, "order": order,
+            "frame": info.get("frame"), "next": nxt}
+
+
+def status(name):
+    d = status_data(name)
+    print(f"{d['name']}: her files are in {d['files']} and {d['paths']['layers']}")
+    for what, done, how in d["steps"]:
+        print(f"  [{'x' if done else ' '}] {what}")
+    if d["order"]:
+        print(f"  layers ({d['frame'][0]}x{d['frame'][1]}): {', '.join(d['order'])}")
+    print(f"next: {d['next']}")
 
 
 def main(args):
@@ -316,6 +333,8 @@ def main(args):
         run(build_python(), "rig.py", "build", kit.pose_of(rest[0]))
     elif step == "view" and len(rest) <= 1:
         run(sys.executable, "view.py", *rest)
+    elif step == "gui" and len(rest) <= 1:
+        run(sys.executable, "gui.py", *rest)
     else:
         sys.exit(__doc__)
 

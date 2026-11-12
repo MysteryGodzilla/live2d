@@ -22,6 +22,8 @@ the command it runs. Read `README.md` in this folder once before your first char
 downloads, the settings file, every step with its command, and the table of layer fixes. This file
 is how to work through it well.
 
+There is also a GUI for people (`live2d.py gui`: the same steps as buttons in a page); an agent should use the commands.
+
 ## Before anything
 
 1. Run `live2d.py check`. It says what is installed and what is missing for which step. If

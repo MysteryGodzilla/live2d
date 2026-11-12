@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live2D kit</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --text: #1d1f23; --muted: #5a5f69; --line: #d4d6db;
+  --accent: #2456a6; --accent-text: #ffffff; --ok: #1d6b3a; --bad: #a3361b; --warn-bg: #fff4d6; --warn-line: #d9a400;
+  --code-bg: #eceef2; --log-bg: #14161a; --log-text: #e4e6ea;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181b; --panel: #202226; --text: #e8e9ec; --muted: #a0a5af; --line: #3a3d44;
+    --accent: #6c9bf0; --accent-text: #0d1117; --ok: #6fcf8e; --bad: #ff8f72; --warn-bg: #3a3118; --warn-line: #a88510;
+    --code-bg: #2a2d33; --log-bg: #0c0d0f; --log-text: #e4e6ea;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, "Segoe UI", sans-serif; padding-bottom: 300px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { min-height: 36px; padding: 4px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.run { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.run.armed { background: var(--warn-bg); color: var(--text); border-color: var(--warn-line); }
+button:disabled { opacity: .45; cursor: default; }
+input, select, textarea { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); min-height: 34px; }
+textarea { width: 100%; min-height: 70px; }
+code, pre { font: 14px/1.4 ui-monospace, Consolas, monospace; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 17px; margin: 0; }
+h3 { font-size: 15px; margin: 14px 0 4px; }
+p { margin: 6px 0; }
+.muted { color: var(--muted); }
+
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header .project { flex: 1 1 300px; min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 14px; }
+.pill { border-radius: 999px; padding: 4px 14px; min-height: 34px; }
+.pill.ok { color: var(--ok); border-color: var(--ok); }
+.pill.bad { color: var(--bad); border-color: var(--bad); }
+#checkbox { padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+#checkbox table { border-collapse: collapse; width: 100%; font-size: 14px; }
+#checkbox td { padding: 3px 10px 3px 0; vertical-align: top; }
+td.ok { color: var(--ok); } td.bad { color: var(--bad); }
+
+.layout { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+aside { flex: 0 0 210px; }
+main { flex: 1 1 auto; min-width: 0; }
+.char { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 6px; margin-bottom: 8px; min-height: 64px; }
+.char.on { border-color: var(--accent); outline: 2px solid var(--accent); }
+.char img, .char .noimg { width: 40px; height: 60px; object-fit: contain; background: var(--code-bg); border-radius: 4px; flex: none; }
+.char small { display: block; color: var(--muted); }
+.title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 10px; }
+
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
+.step.next { border-color: var(--accent); outline: 1px solid var(--accent); }
+.step > h2 { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.tick { display: inline-block; width: 22px; height: 22px; line-height: 20px; text-align: center; border: 2px solid var(--line); border-radius: 50%; font-size: 14px; }
+.tick.done { border-color: var(--ok); color: var(--ok); }
+.tag { font-size: 12px; font-weight: 600; border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: 4px; padding: 0 6px; }
+.tag.next { border-color: var(--accent); background: none; color: var(--accent); }
+.act { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.act code.cmd { flex: 1 1 280px; min-width: 0; background: var(--code-bg); padding: 6px 8px; border-radius: 6px; overflow-wrap: anywhere; }
+.act code.cmd.bad { color: var(--bad); }
+.warn { flex: 1 1 100%; background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 6px; padding: 6px 10px; font-size: 14px; }
+.note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 6px; padding: 6px 10px; font-size: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
+.row label { display: flex; gap: 6px; align-items: center; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+details { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+summary { cursor: pointer; font-weight: 600; }
+.pics { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.pics img { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--code-bg); }
+.pics button.pic { padding: 0; width: 150px; min-height: 0; overflow: hidden; }
+.pics button.pic img { display: block; width: 100%; border: 0; }
+.pics button.pic span { display: block; font-size: 12px; padding: 2px 4px; }
+.pics .big { max-height: 520px; }
+.checker { background-color: #fff; background-image: linear-gradient(45deg, #c8c8c8 25%, transparent 25%, transparent 75%, #c8c8c8 75%), linear-gradient(45deg, #c8c8c8 25%, transparent 25%, transparent 75%, #c8c8c8 75%); background-size: 20px 20px; background-position: 0 0, 10px 10px; display: inline-block; max-width: 100%; }
+.checker img { display: block; max-height: 520px; max-width: 100%; border: 0; background: none; }
+pre.out { background: var(--code-bg); padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; margin: 6px 0; }
+iframe { width: 100%; height: 680px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+
+#log { position: fixed; left: 0; right: 0; bottom: 0; height: 280px; background: var(--log-bg); color: var(--log-text); border-top: 2px solid var(--accent); display: flex; flex-direction: column; z-index: 5; }
+#log.small { height: 44px; }
+#loghead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 6px 12px; background: #23262c; color: #e4e6ea; }
+#loghead button { min-height: 30px; background: #33373f; color: #e4e6ea; border-color: #555a64; }
+#loghead code { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+#logout { flex: 1; margin: 0; padding: 8px 12px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 800px) {
+  .layout { flex-direction: column; padding: 10px; }
+  aside { flex: none; width: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+  .char { width: auto; margin: 0; flex: 1 1 180px; }
+  iframe { height: 560px; }
+  #log { height: 240px; }
+  body { padding-bottom: 260px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Live2D kit</h1>
+  <div class="project" id="project">Loading...</div>
+  <button class="pill" id="checkpill" type="button">Check: running...</button>
+</header>
+<div id="checkbox" hidden></div>
+<div class="layout">
+  <aside>
+    <div id="chars"></div>
+    <button type="button" id="newchar">New character</button>
+  </aside>
+  <main id="main"></main>
+</div>
+<section id="log">
+  <div id="loghead">
+    <strong>Log</strong>
+    <code id="logcmd">Nothing has run yet.</code>
+    <span id="logstate"></span>
+    <button type="button" id="logstop" disabled>Stop</button>
+    <button type="button" id="logsize">Smaller</button>
+  </div>
+  <pre id="logout"></pre>
+</section>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const NAME = /^[a-z0-9][a-z0-9_-]*$/;
+
+let S = null;            // the last state from the server
+let cur = null;          // the chosen character's name
+let extra = [];          // names added with New character that have no folder yet
+const V = {};            // what is typed in the forms, so a reload of the state keeps it
+let ACTS = [];           // the buttons of the page now: how to make their request
+let job = null;          // the job the log shows
+let timer = null;
+let viewerFrame = null;  // the viewer's iframe is kept between redraws
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = { error: "The server sent something unreadable." }; }
+  if (!r.ok) throw new Error(data.error || ("Error " + r.status));
+  return data;
+}
+
+/* ---- state ---- */
+async function loadState(recheck) {
+  try {
+    S = await api("/api/state" + (recheck ? "?recheck=1" : ""));
+  } catch (e) {
+    $("project").textContent = "The server did not answer: " + e.message;
+    return;
+  }
+  const names = allNames();
+  if (!cur || !names.includes(cur)) cur = names[0] || null;
+  $("project").textContent = "Project: " + S.project;
+  drawCheck();
+  drawChars();
+  drawMain();
+  if (S.check.pending) setTimeout(() => loadState(false), 2500);
+  if (S.job && !job) {
+    try { showJob(await api("/api/job/" + S.job.id)); } catch (e) { /* the server was restarted */ }
+  }
+}
+
+function allNames() {
+  const names = S.characters.map((c) => c.name);
+  for (const n of extra) if (!names.includes(n)) names.push(n);
+  return names;
+}
+function charData(name) {
+  return S.characters.find((c) => c.name === name) ||
+    { name, steps: [], layers: [], pictures: {}, head_psds: [], built: false, model: name + "-full", next: "Draw her, then pick one drawing.", fresh: true };
+}
+function val(key, def) { const k = cur + "|" + key; return k in V ? V[k] : def; }
+
+/* ---- the check ---- */
+function drawCheck() {
+  const c = S.check, pill = $("checkpill"), box = $("checkbox");
+  pill.classList.remove("ok", "bad");
+  if (c.pending) { pill.textContent = "Check: running..."; return; }
+  const bad = c.rows.filter((r) => !r.ok);
+  pill.textContent = bad.length ? "Check: " + bad.length + " missing" : "Check: all ok";
+  pill.classList.add(bad.length ? "bad" : "ok");
+  box.innerHTML = "<table>" + c.rows.map((r) => `<tr><td>${esc(r.what)}</td><td class="${r.ok ? "ok" : "bad"}">${r.ok ? "ok" : "Missing: " + esc(r.problem)}</td><td class="muted">for: ${esc(r.steps)}</td></tr>`).join("") + "</table>" +
+    (c.gpu ? `<p class="muted">Graphics card: ${esc(c.gpu)}. The GPU steps want it to themselves.</p>` : "") +
+    `<p><button type="button" id="recheck">Check again</button></p>`;
+}
+$("checkpill").onclick = () => { $("checkbox").hidden = !$("checkbox").hidden; };
+$("checkbox").onclick = (e) => { if (e.target.id === "recheck") { S.check = { pending: true }; drawCheck(); loadState(true); } };
+
+/* ---- the characters ---- */
+function drawChars() {
+  $("chars").innerHTML = allNames().map((n) => {
+    const c = charData(n), pic = c.pictures.drawing;
+    const done = c.steps.filter((s) => s.done).length;
+    return `<button type="button" class="char ${n === cur ? "on" : ""}" data-name="${esc(n)}">` +
+      (pic ? `<img src="${esc(pic)}" alt="">` : `<span class="noimg"></span>`) +
+      `<span><strong>${esc(n)}</strong><small>${c.fresh ? "new" : c.built ? "model built" : done + " of " + c.steps.length + " done"}</small></span></button>`;
+  }).join("");
+}
+$("chars").onclick = (e) => {
+  const b = e.target.closest(".char");
+  if (b) { cur = b.dataset.name; drawChars(); drawMain(); }
+};
+$("newchar").onclick = () => {
+  const n = (prompt("The new character's name: lower-case letters, digits, dashes and underscores.") || "").trim();
+  if (!n) return;
+  if (!NAME.test(n)) { alert("That name has characters that are not allowed."); return; }
+  if (!extra.includes(n) && !S.characters.some((c) => c.name === n)) extra.push(n);
+  cur = n;
+  drawChars(); drawMain();
+};
+
+/* ---- the buttons that run a command ---- */
+function A(get, label, opt) {
+  opt = opt || {};
+  ACTS.push({ get, gpu: !!opt.gpu, armed: false });
+  const i = ACTS.length - 1;
+  return `<div class="act"><code class="cmd" id="cmd${i}">...</code>` +
+    `<button type="button" class="run" data-i="${i}">${esc(label)}</button>` +
+    (opt.gpu ? `<div class="warn" id="warn${i}" hidden>This uses the graphics card. Close other programs that use it, then click the button again to confirm.</div>` : "") +
+    `</div>`;
+}
+let previewTimer = null;
+function previews() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => ACTS.forEach(async (a, i) => {
+    const el = $("cmd" + i);
+    if (!el) return;
+    try {
+      const p = await api("/api/preview", a.get());
+      el.textContent = p.command; el.classList.remove("bad");
+    } catch (e) { el.textContent = e.message; el.classList.add("bad"); }
+  }), 150);
+}
+function setBusy(busy) {
+  document.body.classList.toggle("busy", busy);
+  document.querySelectorAll("button.run, button.pic").forEach((b) => { b.disabled = busy; });
+}
+async function runReq(req, gpu) {
+  try {
+    const r = await api("/api/run", Object.assign({}, req, gpu ? { gpu_ok: true } : {}));
+    job = { id: r.id, state: "running", command: r.command, output: "" };
+    showJob(job);
+    track(r.id);
+  } catch (e) {
+    $("logcmd").textContent = "Not started.";
+    $("logstate").textContent = "";
+    $("logout").textContent = e.message;
+  }
+}
+$("main").addEventListener("click", (e) => {
+  const pic = e.target.closest("button.pic");
+  if (pic) {
+    const c = charData(cur);
+    if (c.pictures.drawing && !confirm("This replaces the drawing " + cur + " has now. Go on?")) return;
+    runReq({ step: "pick", name: cur, args: { picture: pic.dataset.pick } }, false);
+    return;
+  }
+  const b = e.target.closest("button.run");
+  if (!b) return;
+  const a = ACTS[+b.dataset.i];
+  if (a.gpu && !a.armed) {
+    a.armed = true;
+    b.classList.add("armed");
+    b.dataset.label = b.textContent;
+    b.textContent = "Confirm: use the graphics card";
+    $("warn" + b.dataset.i).hidden = false;
+    setTimeout(() => { if (a.armed) disarm(b, a); }, 10000);
+    return;
+  }
+  if (a.gpu) disarm(b, a);
+  runReq(a.get(), a.gpu);
+});
+function disarm(b, a) {
+  a.armed = false;
+  b.classList.remove("armed");
+  if (b.dataset.label) b.textContent = b.dataset.label;
+  const w = $("warn" + b.dataset.i);
+  if (w) w.hidden = true;
+}
+$("main").addEventListener("input", (e) => {
+  const el = e.target;
+  if (!el.dataset.k) return;
+  V[cur + "|" + el.dataset.k] = el.type === "checkbox" ? el.checked : el.value;
+  previews();
+});
+$("main").addEventListener("change", (e) => {
+  if (e.target.dataset.redraw) drawMain();
+});
+
+/* ---- jobs and the log ---- */
+function showJob(j) {
+  job = j;
+  $("logcmd").textContent = j.command;
+  const label = { running: "Running...", done: "Done", failed: "Failed (exit code " + j.code + ")", stopped: "Stopped" }[j.state] || j.state;
+  $("logstate").textContent = label;
+  const out = $("logout");
+  const atEnd = out.scrollHeight - out.scrollTop - out.clientHeight < 40;
+  out.textContent = j.output || (j.state === "running" ? "Started. Waiting for its first line..." : "(no output)");
+  if (atEnd) out.scrollTop = out.scrollHeight;
+  $("logstop").disabled = j.state !== "running";
+  setBusy(j.state === "running");
+}
+function track(id) {
+  clearInterval(timer);
+  timer = setInterval(async () => {
+    try {
+      const j = await api("/api/job/" + id);
+      showJob(j);
+      if (j.state !== "running") {
+        clearInterval(timer);
+        if (/ layers check /.test(j.command) && j.state === "done") V[cur + "|checkText"] = j.output;
+        await loadState(false);
+      }
+    } catch (e) {
+      clearInterval(timer);
+      $("logstate").textContent = "Lost contact with the server";
+    }
+  }, 1000);
+}
+$("logstop").onclick = async () => {
+  if (!job) return;
+  try { await api("/api/stop/" + job.id, {}); } catch (e) { $("logout").textContent += "\n" + e.message; }
+};
+$("logsize").onclick = () => {
+  const small = $("log").classList.toggle("small");
+  $("logsize").textContent = small ? "Bigger" : "Smaller";
+};
+
+/* ---- form pieces ---- */
+function input(key, def, attrs) { return `<input data-k="${esc(key)}" value="${esc(val(key, def))}" ${attrs || ""}>`; }
+function select(key, options, def, redraw) {
+  const v = val(key, def);
+  return `<select data-k="${esc(key)}" ${redraw ? 'data-redraw="1"' : ""}>` +
+    options.map((o) => `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("") + "</select>";
+}
+function pickOf(layers, preferred) { return layers.includes(preferred) ? preferred : (layers[0] || ""); }
+function img(url, alt, cls) { return url ? `<div class="pics"><img class="${cls || ""}" src="${esc(url)}" alt="${esc(alt)}"></div>` : ""; }
+function stepBox(n, title, done, tags, body, isNext) {
+  return `<section class="step ${isNext ? "next" : ""}"><h2><span class="tick ${done ? "done" : ""}" title="${done ? "Done" : "Not done"}">${done ? "&#10003;" : ""}</span>` +
+    `${n}. ${esc(title)} ${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}${isNext ? '<span class="tag next">next</span>' : ""}</h2>${body}</section>`;
+}
+const GPU_NOTE = `<p class="note">This step uses the graphics card. Close other programs that use it. You confirm with a second click.</p>`;
+
+/* ---- the nine steps ---- */
+function drawMain() {
+  ACTS = [];
+  const main = $("main");
+  if (!cur) {
+    main.innerHTML = `<section class="step"><h2>No characters yet</h2><p>Use New character to start one. Its first step is to draw candidates.</p></section>`;
+    return;
+  }
+  const c = charData(cur), p = c.pictures, d = (w) => !!(c.steps.find((s) => s.what === w) || {}).done;
+  const L = c.layers, name = cur;
+  const mine = S.rounds.filter((r) => r.name.startsWith(name + "-"));
+  const roundList = mine.length ? mine : S.rounds;
+  const done = [
+    mine.length > 0 || d("her drawing"), d("her drawing"), d("cut-out") && d("upscaled"), d("layers from the whole-body pass"),
+    !!p.check, d("head pass run") && d("layers at twice the size") && d("head layers taken"),
+    d("closed eyes and open mouth"), c.built, false,
+  ];
+  const first = done.findIndex((x, i) => !x && i !== 4 && i !== 8);
+  const comfy = (action, label) => A(() => ({ step: "comfy", args: { action } }), label, { gpu: action === "start" });
+  const html = [];
+
+  // 1. Draw candidates
+  const lookNames = [];
+  for (const [who, labels] of Object.entries(S.looks)) { lookNames.push(who); for (const l of labels) if (l !== "default") lookNames.push(who + ":" + l); }
+  let free = 1; while (S.rounds.some((r) => r.name === name + "-round" + free)) free++;
+  const mode = val("mode", lookNames.includes(name) ? "file" : "text");
+  const latestMine = mine[0];
+  html.push(stepBox(1, "Draw candidates", done[0], ["GPU"],
+    `<p>Candidate drawings of her: one look, several seeds. Skip this step if you already have a drawing. Pictures and a contact sheet are saved in the round's folder. Run more seeds, or change the words, until one is right.</p>` +
+    GPU_NOTE +
+    `<div class="row"><label><input type="radio" name="mode" data-k="mode" data-redraw="1" value="file" ${mode === "file" ? "checked" : ""}> From the looks file</label>` +
+    `<label><input type="radio" name="mode" data-k="mode" data-redraw="1" value="text" ${mode === "text" ? "checked" : ""}> A look I write</label></div>` +
+    (mode === "file"
+      ? (lookNames.length ? `<div class="row"><label>Character ${select("char", lookNames, lookNames.includes(name) ? name : lookNames[0])}</label></div>`
+        : `<p class="muted">The looks file has no characters. Write a look instead.</p>`)
+      : `<textarea data-k="look" placeholder="A young woman with long red hair in two pigtails, blue eyes, a white lab coat over a black t-shirt, ...">${esc(val("look", ""))}</textarea>` +
+        `<p class="muted">Hair, eyes, build and clothes, from head to shoes. Leave out the pose and the background: the kit adds those.</p>`) +
+    `<div class="row"><label>Seeds ${input("seeds", "1,2,3,4", 'size="14"')}</label><label>Round name ${input("round", name + "-round" + free, 'size="22"')}</label></div>` +
+    `<h3>ComfyUI</h3><p class="muted">The drawing, cut-out and upscale steps need it running.</p>` +
+    comfy("start", "Start ComfyUI") + comfy("stop", "Stop ComfyUI") +
+    `<h3>Draw</h3>` +
+    A(() => {
+      const args = { round: val("round", name + "-round" + free), seeds: val("seeds", "1,2,3,4") };
+      if (val("mode", lookNames.includes(name) ? "file" : "text") === "file") args.character = val("char", lookNames.includes(name) ? name : lookNames[0]);
+      else args.look = val("look", "");
+      return { step: "draw", name, args };
+    }, "Draw", { gpu: true }) +
+    (latestMine && latestMine.sheet ? `<p>Contact sheet of the latest round, ${esc(latestMine.name)}:</p>` + img(latestMine.sheet, "Contact sheet of " + latestMine.name, "big") : ""),
+    first === 0));
+
+  // 2. Pick one
+  const rname = val("pickround", roundList[0] ? roundList[0].name : "");
+  const rnd = roundList.find((r) => r.name === rname) || roundList[0];
+  html.push(stepBox(2, "Pick one", done[1], [],
+    `<p>The picture you pick becomes her drawing, <code>full/base.png</code>. Beside it, <code>base.json</code> keeps the prompt, seed and model it was drawn with, so you can draw her again later.</p>` +
+    `<p class="muted">Click a picture to run <code>python live2d.py pick ${esc(name)} &lt;picture&gt;</code>.</p>` +
+    (roundList.length ? `<div class="row"><label>Round ${select("pickround", roundList.map((r) => r.name), rname, true)}</label>` +
+      (mine.length ? "" : `<span class="muted">No round starts with ${esc(name)}, so all rounds are listed.</span>`) + `</div>` +
+      `<div class="pics">` + rnd.pictures.map((x) => `<button type="button" class="pic" data-pick="${esc(x.pick)}" title="Use ${esc(x.file)}"><img loading="lazy" src="${esc(x.url)}" alt="${esc(x.file)}"><span>${esc(x.file)}</span></button>`).join("") + `</div>`
+      : `<p class="muted">No rounds of drawings yet. Draw some in step 1.</p>`) +
+    (p.drawing ? `<p>Her drawing now:</p>` + img(p.drawing, "Her drawing", "big") : ""),
+    first === 1));
+
+  // 3. Cut out and upscale
+  html.push(stepBox(3, "Cut out and upscale", done[2], ["GPU", "about 2 minutes"],
+    `<p>Her drawing without its background, then twice and four times the size. Look at the cut-out: she should be whole, with no background left. Stop ComfyUI before the next step: it needs the whole card.</p>` +
+    GPU_NOTE + comfy("start", "Start ComfyUI") +
+    A(() => ({ step: "cutout", name }), "Cut out", { gpu: true }) +
+    A(() => ({ step: "upscale", name }), "Upscale", { gpu: true }) +
+    comfy("stop", "Stop ComfyUI") +
+    (p.cutout ? `<div class="pics"><div class="checker"><img src="${esc(p.cutout)}" alt="Her cut-out on a checkerboard"></div></div>` : ""),
+    first === 2));
+
+  // 4. Split into layers
+  html.push(stepBox(4, "Split into layers", done[3], ["GPU", "about 10 minutes"],
+    `<p>See-through cuts her into about 17 layers (hair, face, eyes, clothes) and paints in what is hidden behind each one. Her layers are saved one picture each.</p>` +
+    GPU_NOTE + A(() => ({ step: "split", name, args: { mode: "body" } }), "Split her (body)", { gpu: true }) +
+    (L.length ? `<p class="muted">Her layers (${c.frame ? c.frame[0] + "x" + c.frame[1] : ""}): ${esc(L.join(", "))}</p>` : ""),
+    first === 3));
+
+  // 5. Check and fix her layers
+  const lay = (k, def) => L.length ? select(k, L, pickOf(L, def)) : `<span class="muted">(no layers yet)</span>`;
+  const checkText = V[name + "|checkText"];
+  html.push(stepBox(5, "Check and fix her layers", done[4], [],
+    `<p>This is the step that needs your eyes. Check counts the pixels where her layers, stacked, differ from her drawing, and saves a picture with the differences in red. A few thousand pixels of thin red outline is normal. A red block means a layer is in the wrong place or covers something it shouldn't. Run Check again after each fix.</p>` +
+    A(() => ({ step: "layers", name, args: { command: "check" } }), "Check") +
+    (checkText ? `<pre class="out">${esc(checkText)}</pre>` : "") +
+    img(p.check, "Her layers against her drawing, differences in red", "big") +
+    (L.length ? `<h3>Fixes</h3>` +
+      `<details><summary>Repair: a layer covers something it shouldn't, or misses a bit of itself</summary>` +
+      `<p>Makes the layers agree with the drawing wherever each is the one you see. Start with handwear, topwear and bottomwear.</p><div class="checks">` +
+      L.map((l) => `<label><input type="checkbox" data-k="rep_${esc(l)}" ${val("rep_" + l, ["handwear", "topwear", "bottomwear"].includes(l)) ? "checked" : ""}> ${esc(l)}</label>`).join("") + `</div>` +
+      A(() => ({ step: "layers", name, args: { command: "repair", layers: L.filter((l) => val("rep_" + l, ["handwear", "topwear", "bottomwear"].includes(l))) } }), "Repair") + `</details>` +
+      `<details><summary>Lining: an open coat's inside back is painted over her skirt and legs</summary>` +
+      `<p>The two numbers are how light the inside is, from 0 (black) to 1 (white). Run Repair after it.</p>` +
+      `<div class="row"><label>Layer ${lay("lin_layer", "topwear")}</label><label>New layer ${input("lin_new", "coat back", 'size="14"')}</label><label>Above ${lay("lin_above", "handwear")}</label>` +
+      `<label>Light from ${input("lin_low", "0.5", 'size="4"')}</label><label>to ${input("lin_high", "0.86", 'size="4"')}</label></div>` +
+      A(() => ({ step: "layers", name, args: { command: "lining", layer: val("lin_layer", pickOf(L, "topwear")), new: val("lin_new", "coat back"), above: val("lin_above", pickOf(L, "handwear")), low: val("lin_low", "0.5"), high: val("lin_high", "0.86") } }), "Lining") + `</details>` +
+      `<details><summary>Strays: hair hanging down her back that her drawing doesn't have</summary>` +
+      `<p>Cuts a layer below anything the drawing shows of it, so the strands do not swing out as she moves.</p>` +
+      `<div class="row"><label>Layer ${lay("str_layer", "back hair")}</label></div>` +
+      A(() => ({ step: "layers", name, args: { command: "strays", layer: val("str_layer", pickOf(L, "back hair")) } }), "Strays") + `</details>` +
+      `<details><summary>Move: a layer is in the wrong order</summary>` +
+      `<p>For example her skirt should be over her shirt.</p>` +
+      `<div class="row"><label>Layer ${lay("mov_layer", "bottomwear")}</label><label>Above ${lay("mov_above", "topwear")}</label></div>` +
+      A(() => ({ step: "layers", name, args: { command: "move", layer: val("mov_layer", pickOf(L, "bottomwear")), above: val("mov_above", pickOf(L, "topwear")) } }), "Move") + `</details>` +
+      `<details><summary>Under: a second jaw line shows beside her neck</summary>` +
+      `<p>Paints what the second layer hides of the first, along its lower edge, in the first layer's own colour. Her neck under her chin is the usual case.</p>` +
+      `<div class="row"><label>Layer ${lay("und_layer", "neck")}</label><label>Under ${lay("und_over", "face")}</label></div>` +
+      A(() => ({ step: "layers", name, args: { command: "under", layer: val("und_layer", pickOf(L, "neck")), over: val("und_over", pickOf(L, "face")) } }), "Under") + `</details>`
+      : `<p class="muted">The fixes need her layers: split her in step 4 first.</p>`),
+    first === 4));
+
+  // 6. Head pass
+  const psds = c.head_psds;
+  html.push(stepBox(6, "Head pass", done[5], ["GPU", "about 12 minutes"],
+    `<p>Her face is small in the whole-body split, so her head is split again from a four-times-bigger drawing. Fix her layers first. Then run the commands below, in this order. The last one cleans her neck under her chin, so no second jaw line shows when her head lifts.</p>` +
+    GPU_NOTE + A(() => ({ step: "split", name, args: { mode: "head" } }), "Split her head", { gpu: true }) +
+    `<h3>Then, in order</h3>` +
+    `<p>First, her layers at twice the size. Her drawing's upscaled copy is used.</p>` +
+    A(() => ({ step: "layers", name, args: { command: "scale", factor: 2 } }), "Scale to 2") +
+    `<p>Second, take her head layers. The head PSD is the one the head pass kept.</p>` +
+    (psds.length ? `<div class="row"><label>Head PSD ${select("psd", psds, psds[psds.length - 1])}</label></div>` : `<p class="muted">No head PSD yet: run the head pass first.</p>`) +
+    A(() => ({ step: "layers", name, args: { command: "head", psd: val("psd", psds[psds.length - 1] || "") } }), "Take head layers") +
+    `<p>Third, clean her neck under her chin.</p>` +
+    A(() => ({ step: "layers", name, args: { command: "under", layer: "neck", over: "face" } }), "Neck under face") +
+    `<p>If a second jaw line still shows beside her neck, run it for her back hair too.</p>` +
+    A(() => ({ step: "layers", name, args: { command: "under", layer: "back hair", over: "face" } }), "Back hair under face") +
+    `<p>A character whose head layers were taken with an older kit gets sharp copies with this, then Build.</p>` +
+    A(() => ({ step: "layers", name, args: { command: "sharp" } }), "Sharp copies"),
+    first === 5));
+
+  // 7. Closed eyes, mouth, blush
+  const mouthN = (k) => { const v = val(k, ""); return v === "" ? {} : { style: v }; };
+  html.push(stepBox(7, "Closed eyes, open mouth, blush", done[6], [],
+    `<p>The drawing has her eyes open and her mouth shut. These draw the other two. Look at the mouths and the blushes on her own face, then choose one by its number on the sheet. Each choice replaces the last one. Build again after any of these.</p>` +
+    `<h3>Closed eyes</h3>` + A(() => ({ step: "parts", name, args: { command: "closed-eyes" } }), "Closed eyes") +
+    `<h3>Her open mouth</h3>` +
+    A(() => ({ step: "parts", name, args: { command: "mouth-sheet" } }), "Show the mouths") + img(p.mouths, "The open mouths on her face, numbered", "big") +
+    `<div class="row"><label>Number ${input("mouth_style", "", 'type="number" min="1" max="99" size="4" style="width:5em"')}</label><span class="muted">Leave it empty for the plain mouth.</span></div>` +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth" }, mouthN("mouth_style")) }), "Draw her mouth") +
+    `<h3>Her blush</h3>` +
+    A(() => ({ step: "parts", name, args: { command: "blush-sheet" } }), "Show the blushes") + img(p.blushes, "The blushes on her face, numbered", "big") +
+    `<div class="row"><label>Number ${input("blush_style", "", 'type="number" min="1" max="99" size="4" style="width:5em"')}</label><span class="muted">Leave it empty for the one Build draws.</span></div>` +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "blush" }, mouthN("blush_style")) }), "Draw her blush"),
+    first === 6));
+
+  // 8. Build
+  html.push(stepBox(8, "Build", done[7], ["no GPU", "about 2 minutes"],
+    `<p>Her model is made from her layers. Read what it prints: how far it turned her head upright, how many arms and legs it found, and any part it could not place.</p>` +
+    A(() => ({ step: "build", name }), "Build her model") +
+    (c.built ? `<p class="muted">Her model is built. Build again after any change to her layers or her parts.</p>` : ""),
+    first === 7));
+
+  // 9. Try her
+  html.push(stepBox(9, "Try her", false, [],
+    `<p>At rest she should look like her drawing. Move a slider to both ends and look for anything missing, doubled or torn. The README's list, "Trying her model", says what to check. After a new build, reload the viewer.</p>` +
+    (c.built ? `<div class="row"><a href="/live2d/?who=${encodeURIComponent(c.model)}" target="_blank" rel="noopener">Open the viewer in its own tab</a><button type="button" id="reloadviewer">Reload the viewer</button></div><div id="viewerbox"></div>`
+      : `<p class="muted">Build her model first (step 8).</p>`),
+    false));
+
+  main.innerHTML = `<div class="title"><h2>${esc(name)}</h2><span class="muted">Next: ${esc(c.next.replace(/`/g, ""))}</span></div>` + html.join("");
+  const box = $("viewerbox");
+  if (box) {
+    const src = "/live2d/?who=" + encodeURIComponent(c.model);
+    if (!viewerFrame || viewerFrame.dataset.src !== src) {
+      viewerFrame = document.createElement("iframe");
+      viewerFrame.dataset.src = src; viewerFrame.src = src; viewerFrame.title = "The viewer";
+    }
+    box.appendChild(viewerFrame);
+  }
+  setBusy(!!job && job.state === "running");
+  previews();
+}
+$("main").addEventListener("click", (e) => {
+  if (e.target.id === "reloadviewer" && viewerFrame) viewerFrame.src = viewerFrame.dataset.src;
+});
+
+loadState(false);
+</script>
+</body>
+</html>

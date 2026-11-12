@@ -1,0 +1,465 @@
+"""The kit's GUI: a page on this PC with each step of the README as a button. It only ever runs the
+kit's own commands (`live2d.py <step> <name> ...`, the same as typing them) and shows what they print.
+Standard library only.
+
+usage:
+  gui.py [port]         (8780 unless given) then open http://127.0.0.1:<port>/
+
+It listens on this PC only, and a POST has to come from its own page. It runs one command at a time,
+from a fixed list of steps, each with its arguments checked: a character's name is letters, digits,
+dashes and underscores; a number is a number; a picture is one of the project's own. Nothing typed
+in the page is ever run as it is. The page shows each command before it runs it, and the GPU steps
+(draw, cutout, upscale, split, ComfyUI's start) need a second click.
+
+The viewer (view.py) is served from the same address, under /live2d/, and shown in the page's last step.
+Pictures come from the project only: /files/characters/... and /files/out/....
+"""
+import json, os, re, subprocess, sys, threading, time
+from http.server import ThreadingHTTPServer
+from urllib.parse import parse_qs, unquote, urlparse
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import kit
+import view
+import live2d
+
+PAGE = os.path.join(kit.SCRIPTS, "gui", "index.html")
+LIVE2D = os.path.join(kit.KIT, "live2d.py")
+NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+ROUND = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,40}")
+CHARACTER = re.compile(r"[a-z0-9][a-z0-9_-]*(:[A-Za-z0-9_-]{1,30})?")
+SEEDS = re.compile(r"[0-9]{1,9}(,[0-9]{1,9}){0,15}")
+NEW_LAYER = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_ -]{0,29}")
+PICTURE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.(png|jpg)")
+GPU_STEPS = ("draw", "cutout", "upscale", "split")
+
+
+class Refuse(Exception):
+    """A request the page may not make, with the reason in plain words."""
+
+
+# ---- the fixed list of steps -------------------------------------------------------------------
+
+def text(args, key, what, pattern=None, low=1, high=100):
+    value = args.get(key)
+    if not isinstance(value, str) or not low <= len(value) <= high:
+        raise Refuse(f"{what}: write it as text")
+    if pattern is not None and not pattern.fullmatch(value):
+        raise Refuse(f"{what}: not an allowed form")
+    return value
+
+
+def number(args, key, what, low, high, whole=False):
+    value = args.get(key)
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        value = int(value) if whole else float(value)
+    except (TypeError, ValueError):
+        raise Refuse(f"{what}: write a number") from None
+    if not low <= value <= high:
+        raise Refuse(f"{what}: between {low:g} and {high:g}")
+    return value
+
+
+def character(name):
+    if not isinstance(name, str) or not NAME.fullmatch(name) or len(name) > 40:
+        raise Refuse("A character's name is lower-case letters, digits, dashes and underscores")
+    return name
+
+
+def her_layers(name):
+    try:
+        return live2d.status_data(name)["order"]
+    except Exception:
+        return []
+
+
+def layer(args, key, name):
+    value = args.get(key)
+    if not isinstance(value, str) or value not in her_layers(name):
+        raise Refuse(f"{key}: pick one of her layers")
+    return value
+
+
+def head_psd(args, name):
+    folder = live2d.paths(name)["layers"]
+    value = args.get("psd")
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*head[A-Za-z0-9._-]*\.psd", value) \
+            or not os.path.isfile(os.path.join(folder, value)):
+        raise Refuse("psd: pick one of the head PSDs in her layers folder (the head pass makes it)")
+    return os.path.join(folder, value), os.path.join(folder, "head-crop.json")
+
+
+def relative(path):
+    """A path as the commands show it: from the project's folder, with forward slashes."""
+    try:
+        return os.path.relpath(path, kit.project()).replace("\\", "/")
+    except ValueError:
+        raise Refuse("That file is on another drive than the project") from None
+
+
+def inside(path, root):
+    path, root = os.path.realpath(path), os.path.realpath(root)
+    return path == root or path.startswith(root + os.sep)
+
+
+def build_command(req):
+    """The arguments after live2d.py for one request, or a Refuse. The only place a command is made."""
+    if not isinstance(req, dict):
+        raise Refuse("The request is not what the page sends")
+    step, args = req.get("step"), req.get("args") or {}
+    if not isinstance(args, dict):
+        raise Refuse("The arguments are not what the page sends")
+    name = req.get("name")
+    if step == "check":
+        return ["check"], False
+    if step == "comfy":
+        action = args.get("action")
+        if action not in ("start", "stop", "status"):
+            raise Refuse("ComfyUI: start, stop or status")
+        return ["comfy", action], action == "start"
+    if step == "draw":
+        name = name or None
+        rnd = text(args, "round", "Round name", ROUND, 1, 41)
+        seeds = text(args, "seeds", "Seeds", SEEDS, 1, 200)
+        if args.get("look"):
+            look = text(args, "look", "Look", None, 5, 1500)
+            if look.startswith("-") or any(ord(c) < 32 for c in look):
+                raise Refuse("Look: plain words, not starting with a dash")
+            return ["draw", rnd, "--look", look, "--seeds", seeds], True
+        who = text(args, "character", "Character", CHARACTER, 1, 72) if args.get("character") else (name and character(name))
+        if not who:
+            raise Refuse("Write a look, or pick a character from the looks file")
+        return ["draw", rnd, "--character", who, "--seeds", seeds], True
+    if step == "pick":
+        name = character(name)
+        picture = args.get("picture")
+        if not isinstance(picture, str) or picture.count("/") != 1:
+            raise Refuse("Picture: one of a round's pictures")
+        folder, file = picture.split("/")
+        if not ROUND.fullmatch(folder) or not PICTURE.fullmatch(file):
+            raise Refuse("Picture: one of a round's pictures")
+        full = os.path.join(kit.out(), folder, file)
+        if not os.path.isfile(full) or not inside(full, kit.project()):
+            raise Refuse("Picture: that picture is not in the project")
+        return ["pick", name, relative(full)], False
+    name = character(name)
+    if step in ("status", "cutout", "upscale", "build"):
+        return [step, name], step in ("cutout", "upscale")
+    if step == "split":
+        if args.get("mode") not in ("body", "head"):
+            raise Refuse("Split: body or head")
+        return ["split", name, args["mode"]], True
+    if step == "parts":
+        sub = args.get("command")
+        if sub in ("closed-eyes", "mouth-sheet", "blush-sheet"):
+            return ["parts", sub, name], False
+        if sub in ("mouth", "blush"):
+            out = ["parts", sub, name]
+            if args.get("style") not in (None, ""):
+                out += ["--style", str(number(args, "style", "Style", 1, 99, whole=True))]
+            return out, False
+        raise Refuse("Parts: not a command the page runs")
+    if step == "layers":
+        sub = args.get("command")
+        if sub == "check":
+            return ["layers", "check", name], False
+        if sub == "repair":
+            names = args.get("layers")
+            if not isinstance(names, list) or not 1 <= len(names) <= 12:
+                raise Refuse("Repair: pick one or more of her layers")
+            return ["layers", "repair", name] + [layer({"x": n}, "x", name) for n in names], False
+        if sub == "lining":
+            low, high = number(args, "low", "Light, from", 0, 1), number(args, "high", "Light, to", 0, 1)
+            if low >= high:
+                raise Refuse("Light: the first number is the lower one")
+            return ["layers", "lining", name, layer(args, "layer", name), text(args, "new", "New layer", NEW_LAYER, 1, 30),
+                    "--above", layer(args, "above", name), "--light", f"{low:g}", f"{high:g}"], False
+        if sub == "strays":
+            return ["layers", "strays", name, layer(args, "layer", name)], False
+        if sub == "move":
+            return ["layers", "move", name, layer(args, "layer", name), "--above", layer(args, "above", name)], False
+        if sub == "under":
+            return ["layers", "under", name, layer(args, "layer", name), layer(args, "over", name)], False
+        if sub == "scale":
+            return ["layers", "scale", name, f"{number(args, 'factor', 'Factor', 1, 4):g}"], False
+        if sub == "head":
+            psd, crop = head_psd(args, name)
+            return ["layers", "head", name, relative(psd), relative(crop)], False
+        if sub == "sharp":
+            return ["layers", "sharp", name], False
+        raise Refuse("Layers: not a command the page runs")
+    raise Refuse("That is not a step the page runs")
+
+
+def command_text(argv):
+    return "python live2d.py " + " ".join(f'"{a}"' if (" " in a or not a) else a for a in argv)
+
+
+# ---- one job at a time -------------------------------------------------------------------------
+
+class Job:
+    def __init__(self, ident, argv, step, name):
+        self.id, self.argv, self.step, self.name = ident, argv, step, name
+        self.output, self.code, self.stopped = "", None, False
+        self.started, self.ended = time.time(), None
+        self.lock = threading.Lock()
+        env = dict(os.environ, PYTHONUTF8="1", PYTHONUNBUFFERED="1")
+        extra = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+        self.proc = subprocess.Popen([sys.executable, LIVE2D, *argv], cwd=kit.project(), env=env, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **extra)
+        threading.Thread(target=self.read, daemon=True).start()
+
+    def read(self):
+        import codecs
+        decode = codecs.getincrementaldecoder("utf-8")("replace")
+        while True:
+            chunk = self.proc.stdout.read1(4096)
+            if not chunk:
+                break
+            with self.lock:
+                self.output = (self.output + decode.decode(chunk))[-400_000:]
+        self.code = self.proc.wait()
+        self.ended = time.time()
+
+    @property
+    def state(self):
+        if self.ended is None:
+            return "running"
+        return "stopped" if self.stopped else ("done" if self.code == 0 else "failed")
+
+    def stop(self):
+        if self.ended is not None:
+            return
+        self.stopped = True
+        try:
+            if os.name == "nt":  # the command and what it started
+                subprocess.run(["taskkill", "/PID", str(self.proc.pid), "/T", "/F"], capture_output=True)
+            else:
+                import signal
+                os.killpg(self.proc.pid, signal.SIGTERM)
+        except Exception:
+            self.proc.kill()
+
+    def data(self):
+        with self.lock:
+            output = self.output
+        return {"id": self.id, "state": self.state, "step": self.step, "name": self.name, "command": command_text(self.argv),
+                "code": self.code, "output": output, "started": self.started, "ended": self.ended}
+
+
+class Jobs:
+    def __init__(self):
+        self.all, self.lock, self.count = {}, threading.Lock(), 0
+
+    def running(self):
+        return next((j for j in self.all.values() if j.state == "running"), None)
+
+    def start(self, argv, step, name):
+        with self.lock:
+            busy = self.running()
+            if busy:
+                raise Refuse(f"Another step is running: {command_text(busy.argv)}. Wait for it, or stop it first.")
+            self.count += 1
+            job = Job(f"{self.count}-{int(time.time())}", argv, step, name)
+            self.all[job.id] = job
+            for old in sorted(self.all.values(), key=lambda j: j.started)[:-12]:
+                self.all.pop(old.id, None)
+            return job
+
+    def last(self):
+        return max(self.all.values(), key=lambda j: j.started, default=None)
+
+
+JOBS = Jobs()
+
+
+# ---- what the page shows -----------------------------------------------------------------------
+
+CHECK = {"data": None, "busy": False, "at": 0}
+
+
+def check_rows():
+    """The check, computed in the background (it starts the other Pythons, which takes a few seconds)."""
+    if CHECK["busy"]:
+        return
+    CHECK["busy"] = True
+
+    def work():
+        try:
+            d = live2d.check_data()
+            CHECK["data"] = {"project": d["project"], "found": d["found"], "gpu": d["gpu"],
+                             "rows": [{"what": w.strip(), "ok": not p, "problem": p, "steps": s} for w, p, s in d["rows"]]}
+        except Exception as e:  # shown as one row, not a crash
+            CHECK["data"] = {"project": kit.project(), "found": True, "gpu": "", "rows": [
+                {"what": "the check", "ok": False, "problem": f"it failed: {e}", "steps": ""}]}
+        CHECK["busy"], CHECK["at"] = False, time.time()
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def url_for(kind, path):
+    """A picture's address if it is there."""
+    return f"/files/{kind}/{path}" if os.path.isfile(os.path.join(kit.characters() if kind == "characters" else kit.out(), *path.split("/"))) else None
+
+
+def pictures(name):
+    slug = name + "-full"
+    return {"drawing": url_for("characters", f"{name}/full/base.png"), "cutout": url_for("characters", f"{name}/full/cutout.png"),
+            "twice": url_for("characters", f"{name}/full/base-2x.png"), "check": url_for("out", f"layers/{slug}-check.png"),
+            "mouths": url_for("out", f"parts/{slug}-mouths.png"), "blushes": url_for("out", f"parts/{slug}-blushes.png"),
+            "sheet": url_for("out", f"live2d/checks/{slug}-sheet.png")}
+
+
+def characters_found():
+    folder = kit.characters()
+    if not os.path.isdir(folder):
+        return []
+    return sorted(n for n in os.listdir(folder) if NAME.fullmatch(n) and os.path.isdir(os.path.join(folder, n)) and (
+        os.path.isfile(os.path.join(folder, n, "full", "base.png")) or
+        os.path.isfile(os.path.join(folder, n, "layers", "full", "layers.json"))))
+
+
+def one_character(name):
+    d = live2d.status_data(name)
+    folder = d["paths"]["layers"]
+    psds = sorted(f for f in os.listdir(folder) if f.endswith(".psd") and "head" in f) if os.path.isdir(folder) else []
+    return {"name": name, "steps": [{"what": w, "done": done, "next": how} for w, done, how in d["steps"]], "next": d["next"],
+            "layers": d["order"], "frame": d["frame"], "pictures": pictures(name), "head_psds": psds,
+            "built": os.path.exists(d["paths"]["model"]), "model": name + "-full"}
+
+
+def rounds():
+    """Each folder in the output that draw made: its contact sheet and pictures, newest first."""
+    out, found = kit.out(), []
+    if os.path.isdir(out):
+        for n in os.listdir(out):
+            path = os.path.join(out, n)
+            if ROUND.fullmatch(n) and os.path.isfile(os.path.join(path, "prompts.txt")):
+                pics = sorted(f for f in os.listdir(path) if PICTURE.fullmatch(f) and f != "sheet.jpg")
+                found.append({"name": n, "mtime": os.path.getmtime(os.path.join(path, "prompts.txt")),
+                              "sheet": f"/files/out/{n}/sheet.jpg" if os.path.isfile(os.path.join(path, "sheet.jpg")) else None,
+                              "pictures": [{"file": f, "pick": f"{n}/{f}", "url": f"/files/out/{n}/{f}"} for f in pics]})
+    return sorted(found, key=lambda r: -r["mtime"])
+
+
+def looks():
+    """The characters in the looks file, and the names of each one's looks."""
+    try:
+        with open(kit.looks_file(), encoding="utf-8") as f:
+            found = json.load(f).get("characters", {})
+        return {n: sorted(v.get("looks", {})) for n, v in found.items() if not n.startswith("_") and isinstance(v, dict)}
+    except (OSError, ValueError):
+        return {}
+
+
+def state(recheck=False):
+    if recheck or CHECK["data"] is None:
+        check_rows()
+    chars = []
+    for n in characters_found():
+        try:
+            chars.append(one_character(n))
+        except Exception as e:
+            chars.append({"name": n, "error": str(e), "steps": [], "layers": [], "pictures": {}, "head_psds": []})
+    last = JOBS.last()
+    return {"project": kit.project(), "kit": kit.KIT, "characters_folder": kit.characters(), "out_folder": kit.out(),
+            "check": CHECK["data"] if CHECK["data"] and not (recheck and CHECK["busy"]) else {"pending": True},
+            "characters": chars, "rounds": rounds(), "looks": looks(),
+            "job": {"id": last.id, "state": last.state, "command": command_text(last.argv)} if last else None}
+
+
+# ---- the server --------------------------------------------------------------------------------
+
+FILE_PATTERNS = {
+    "characters": re.compile(r"[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*/(base|cutout|base-2x)\.png"),
+    "out": re.compile(r"(layers|parts|live2d/checks)/[A-Za-z0-9._-]+\.png|[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+\.(png|jpg)"),
+}
+
+
+class Handler(view.Viewer):
+    port = 0
+
+    def json(self, status, data):
+        self.send(status, json.dumps(data).encode(), view.TYPES[".json"])
+
+    def host_ok(self):
+        return self.headers.get("Host", "") in (f"127.0.0.1:{self.port}", f"localhost:{self.port}")
+
+    def body(self):
+        size = int(self.headers.get("Content-Length") or 0)
+        if not 0 <= size < 100_000:
+            raise Refuse("The request is too big")
+        try:
+            return json.loads(self.rfile.read(size) or b"{}")
+        except ValueError:
+            raise Refuse("The request is not JSON") from None
+
+    def do_GET(self):
+        if not self.host_ok():
+            return self.send(403, b"this page answers on this PC's own address only")
+        url = urlparse(self.path)
+        path = url.path
+        if path in ("/", "/index.html"):
+            with open(PAGE, "rb") as f:
+                return self.send(200, f.read(), view.TYPES[".html"])
+        if path == "/api/state":
+            return self.json(200, state(recheck="recheck" in parse_qs(url.query)))
+        m = re.fullmatch(r"/api/job/([0-9]+-[0-9]+)", path)
+        if m:
+            job = JOBS.all.get(m.group(1))
+            return self.json(200, job.data()) if job else self.json(404, {"error": "No such job"})
+        if path.startswith("/files/"):
+            kind, _, rest = path[len("/files/"):].partition("/")
+            rest = unquote(rest)
+            parts = rest.split("/")
+            if kind not in FILE_PATTERNS or any(p in ("", ".", "..") or "\\" in p or ":" in p for p in parts) \
+                    or not FILE_PATTERNS[kind].fullmatch(rest):
+                return self.send(404, b"not a picture of the project")
+            return self.file(kit.characters() if kind == "characters" else kit.out(), rest)
+        if path == "/live2d" or path.startswith("/live2d/"):
+            return view.Viewer.do_GET(self)
+        self.send(404, b"not found")
+
+    def do_POST(self):
+        if not self.host_ok() or self.headers.get("Origin") != "http://" + self.headers.get("Host", ""):
+            return self.send(403, b"posts only from this page")
+        path = urlparse(self.path).path
+        if path.startswith("/live2d/"):
+            return view.Viewer.do_POST(self)
+        try:
+            if path in ("/api/run", "/api/preview"):
+                req = self.body()
+                argv, gpu = build_command(req)
+                if path == "/api/preview":
+                    return self.json(200, {"command": command_text(argv), "gpu": gpu})
+                if gpu and req.get("gpu_ok") is not True:
+                    raise Refuse("This step uses the graphics card. Confirm it in the page first.")
+                job = JOBS.start(argv, req["step"], req.get("name"))
+                return self.json(200, {"id": job.id, "command": command_text(argv)})
+            m = re.fullmatch(r"/api/stop/([0-9]+-[0-9]+)", path)
+            if m:
+                job = JOBS.all.get(m.group(1))
+                if not job:
+                    raise Refuse("No such job")
+                job.stop()
+                return self.json(200, {"id": job.id, "state": job.state})
+        except Refuse as e:
+            return self.json(409 if str(e).startswith("Another") else 400, {"error": str(e)})
+        self.send(404, b"not found")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 2 or (len(sys.argv) == 2 and not sys.argv[1].isdigit()):
+        sys.exit(__doc__)
+    port = int(sys.argv[1]) if len(sys.argv) == 2 else 8780
+    Handler.port = port
+    check_rows()
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    print(f"Live2D GUI: http://127.0.0.1:{port}/  (project {kit.project()}; Ctrl+C stops it)", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass

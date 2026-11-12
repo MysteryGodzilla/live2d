@@ -15,6 +15,7 @@ project ([Another project](#another-project)). `SKILL.md` holds the same instruc
 ## Contents
 - [What you need](#what-you-need)
 - [Set up once](#set-up-once)
+- [The GUI](#the-gui)
 - [A drawing that rigs](#a-drawing-that-rigs)
 - [The steps](#the-steps)
 - [Looks and styles](#looks-and-styles)
@@ -110,6 +111,23 @@ folder. In another project it is the same command with the kit's path, such as
 `python C:/tools/live2d/live2d.py <step> ...`. `live2d.py` picks the right Python for each step
 and prints the command it runs, so you can see what happened and run a script by hand if you
 want to.
+
+## The GUI
+
+If you would rather click through the steps than type them, run this from the project's folder:
+
+```
+python live2d.py gui
+```
+
+It prints an address, `http://127.0.0.1:8780/`: open it in a browser (`gui 8795` uses another port).
+The page lists your characters and the nine steps below, each with what it does, the exact command
+it will run, a Run button and the picture to look at afterwards. A log at the bottom shows the
+command's output as it runs, with a Stop button. The GPU steps ask for a second click.
+
+The page runs the same `python live2d.py <step> ...` commands you would type, one at a time, and
+nothing else; it adds no steps of its own. It listens on this PC only. An agent should use the
+commands, not the page.
 
 ## A drawing that rigs
 
@@ -492,6 +510,8 @@ scripts/
   blush.py             how a blush is drawn (parts.py and rig.py both use it)
   rig.py               the model: how she moves, and the writing of the .moc3
   view.py              the viewer's small server
+  gui.py               the GUI's small server: the steps as buttons (python live2d.py gui)
+  gui/index.html       the GUI page
   viewer/index.html    the viewer page, with check sheets for agents
   mouths/              the open mouths' masks, by number, and sheet.png, which shows them
 vendor/
