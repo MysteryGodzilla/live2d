@@ -164,12 +164,16 @@ def build_command(req):
         return ["split", name, args["mode"]], True
     if step == "parts":
         sub = args.get("command")
-        if sub in ("closed-eyes", "mouth-sheet", "blush-sheet"):
+        if sub in ("closed-eyes", "blush-sheet"):
             return ["parts", sub, name], False
-        if sub in ("mouth", "blush"):
+        if sub in ("mouth", "blush", "mouth-sheet"):
             out = ["parts", sub, name]
-            if args.get("style") not in (None, ""):
+            if sub != "mouth-sheet" and args.get("style") not in (None, ""):
                 out += ["--style", str(number(args, "style", "Style", 1, 99, whole=True))]
+            if sub != "blush":  # the open mouth's size and place; left out when they are what she has
+                for key, low, high in (("size", 0.3, 3), ("down", -0.3, 0.3), ("right", -0.3, 0.3), ("turn", -45, 45)):
+                    if args.get(key) not in (None, ""):
+                        out += [f"--{key}", f"{number(args, key, key.capitalize(), low, high):g}"]
             return out, False
         raise Refuse("Parts: not a command the page runs")
     if step == "layers":
@@ -343,7 +347,19 @@ def choices(kind, name):
                 tiles.append({"n": int(m.group(1)), "name": m.group(2).replace("-", " "), "url": url})
     tiles.sort(key=lambda t: t["n"])
     now_url = f"/files/out/parts/{name}-full-{kind}/now.png" if on_her and os.path.isfile(os.path.join(own, "now.png")) else None
-    return {"tiles": tiles, "on_her": on_her, "now": current(kind, name), "now_url": now_url}
+    return {"tiles": tiles, "on_her": on_her, "now": current(kind, name), "now_url": now_url,
+            "adjust": mouth_adjust(name) if kind == "mouths" else None}
+
+
+def mouth_adjust(name):
+    """Her open mouth's size, place and tilt as layers.json keeps them (parts mouth --size/--down/--right/--turn)."""
+    plain = {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}
+    try:
+        with open(os.path.join(live2d.paths(name)["layers"], "layers.json"), encoding="utf-8") as f:
+            kept = json.load(f).get("open_mouth") or {}
+    except (OSError, ValueError):
+        return plain
+    return {k: float(kept.get(k, v)) if isinstance(kept.get(k, v), (int, float)) else v for k, v in plain.items()}
 
 
 def current(kind, name):

@@ -374,6 +374,13 @@ In the GUI (step 7) the mouths and blushes are pictures to click, on plain skin 
   `3-teeth.png`: white on clear). You can redraw one in any paint program. A new number with its
   own masks is a new style, for every character.
 - The mouth is turned with her face, so it sits straight on a head that is tilted in her drawing.
+- Size, place and tilt: `--size 1.2` makes it a fifth bigger (0.8 smaller). `--down 0.01` and
+  `--right 0.01` move it a small step, as a share of her face's width (a minus moves it up or
+  left), along her face as it is turned. `--turn 5` tilts it 5 degrees clockwise (a minus, the
+  other way). These work for a kit mouth and for your own picture. Give the same ones to
+  `mouth-sheet` to see every mouth that way before drawing one. Her layers.json keeps what you
+  drew last, and the next `mouth` and `mouth-sheet` start from it, so `--size 1 --down 0 --right 0
+  --turn 0` puts it back. In the GUI these are four sliders above the mouths, with a Reset button.
 
 **Her blush.** `build` draws one when she has none: a soft mark under each eye with three short
 strokes. To choose another, or move it:

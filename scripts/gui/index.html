@@ -90,6 +90,10 @@ summary { cursor: pointer; font-weight: 600; }
 #lens span { position: absolute; left: 0; bottom: 0; font: 12px system-ui, sans-serif; color: #fff; background: rgba(0, 0, 0, .6); padding: 1px 6px; border-top-right-radius: 6px; }
 @media (hover: none) { .zoomhint .hover { display: none; } }
 .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }
+.slides { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 8px 0 2px; }
+.slides label { display: flex; align-items: center; gap: 6px; }
+.slides input[type=range] { width: 130px; accent-color: var(--accent); }
+.slides output { min-width: 8.5em; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 button.opt { padding: 0; min-height: 0; overflow: hidden; text-align: left; position: relative; }
 button.opt img { display: block; width: 100%; height: auto; border: 0; background: var(--code-bg); }
 button.opt span { display: block; font-size: 13px; padding: 3px 6px; }
@@ -315,6 +319,10 @@ function randomSeeds() {
 }
 $("main").addEventListener("click", (e) => {
   if (e.target.id === "randseeds") return randomSeeds();
+  if (e.target.id === "mouthreset") {  // her mouth's size, place and tilt back to the kit's own
+    Object.assign(V, { [cur + "|mouth_size"]: "100", [cur + "|mouth_down"]: "0", [cur + "|mouth_right"]: "0", [cur + "|mouth_turn"]: "0" });
+    return drawMain();
+  }
   const opt = e.target.closest("button.opt");
   if (opt) {  // a mouth or blush chosen: mark it, and the Draw button's command follows
     V[cur + "|" + opt.dataset.kind + "_style"] = opt.dataset.n;
@@ -355,6 +363,7 @@ $("main").addEventListener("input", (e) => {
   const el = e.target;
   if (!el.dataset.k) return;
   V[cur + "|" + el.dataset.k] = el.type === "checkbox" ? el.checked : el.value;
+  if (el.type === "range" && el.nextElementSibling) el.nextElementSibling.textContent = +(+el.value).toFixed(2) + (el.dataset.unit || "");
   previews();
 });
 $("main").addEventListener("change", (e) => {
@@ -611,21 +620,45 @@ function drawMain() {
   // 7. Closed eyes, mouth, blush
   // Each mouth or blush as a picture to click: her own face's once her sheet is made, else the kit's.
   const chosen = (kind) => val(kind + "_style", (c[kind] && c[kind].now) || 1);
-  const options = (kind, sheetCmd, what) => {
+  const options = (kind, sheetCmd, what, extra) => {
     const o = c[kind] || { tiles: [] };
     const sel = +chosen(kind);
     return `<p class="muted">${o.on_her ? "On her own face. Click one to choose it, then draw it." : "On plain skin, as the kit draws them. Click one to choose it, or see them on her own face first."}</p>` +
-      A(() => ({ step: "parts", name, args: { command: sheetCmd } }), o.on_her ? "Show them on her face again" : "Show them on her face") +
+      A(() => ({ step: "parts", name, args: Object.assign({ command: sheetCmd }, extra ? extra() : {}) }), o.on_her ? "Show them on her face again" : "Show them on her face") +
       `<div class="opts">` + o.tiles.map((t) => `<button type="button" class="opt${t.n === sel ? " sel" : ""}" data-kind="${kind}" data-n="${t.n}" title="${esc(what)} ${t.n}: ${esc(t.name)}">` +
         `<img loading="lazy" src="${esc(t.url)}" alt="${esc(what)} ${t.n}, ${esc(t.name)}">` + (t.n === o.now ? `<b class="now">she has this</b>` : "") +
         `<span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>`;
   };
+  // Her open mouth's size, place and tilt: sliders that start at what she has. Each goes into the
+  // commands only when it differs from that, so a plain Draw keeps what she has.
+  const had = (c.mouths && c.mouths.adjust) || { size: 1, down: 0, right: 0, turn: 0 };
+  const SLIDE = [  // key, label, min, max, step, from her saved value to the slider's, back, unit
+    ["size", "Size", 50, 200, 5, (v) => v * 100, (s) => s / 100, "%"],
+    ["down", "Down", -8, 8, 0.25, (v) => v * 100, (s) => s / 100, "% of her face"],
+    ["right", "Right", -8, 8, 0.25, (v) => v * 100, (s) => s / 100, "% of her face"],
+    ["turn", "Tilt", -30, 30, 1, (v) => v, (s) => s, "°"],
+  ];
+  const slideVal = (k) => { const s = SLIDE.find((x) => x[0] === k); return +val("mouth_" + k, s[5](had[k])); };
+  const mouthPlace = () => {
+    const out = {};
+    for (const [k, , , , , to, back] of SLIDE) {
+      const v = +back(slideVal(k)).toFixed(4);
+      if (Math.abs(v - had[k]) > 1e-6) out[k] = String(v);
+    }
+    return out;
+  };
+  const sliders = `<div class="slides">` + SLIDE.map(([k, label, lo, hi, step, , , unit]) =>
+      `<label>${esc(label)} <input type="range" data-k="mouth_${k}" data-unit="${esc(unit)}" min="${lo}" max="${hi}" step="${step}" value="${slideVal(k)}">` +
+      `<output>${+slideVal(k).toFixed(2)}${esc(unit)}</output></label>`).join("") +
+    `<button type="button" id="mouthreset" title="Size 100%, no move and no tilt">Reset</button></div>` +
+    `<p class="muted">Her mouth's size, place and tilt. "Show them on her face" draws every mouth with these, so you can see them before drawing one. Down and Right move it along her face as it is turned; a minus moves it up or left. Each mouth drawn keeps them, and the sliders start from them next time.</p>`;
   html.push(stepBox(7, "Closed eyes, open mouth, blush", done[6], [],
     `<p>The drawing has her eyes open and her mouth shut. These draw the other two, and her blush. Click a mouth and a blush below to choose them, then draw each. Each choice replaces the last one. Build again after any of these.</p>` +
     `<h3>Closed eyes</h3>` + A(() => ({ step: "parts", name, args: { command: "closed-eyes" } }), "Closed eyes") +
     `<h3>Her open mouth</h3>` +
-    options("mouths", "mouth-sheet", "Mouth") +
-    A(() => ({ step: "parts", name, args: { command: "mouth", style: String(chosen("mouths")) } }), "Draw her mouth") +
+    sliders +
+    options("mouths", "mouth-sheet", "Mouth", mouthPlace) +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth", style: String(chosen("mouths")) }, mouthPlace()) }), "Draw her mouth") +
     `<h3>Her blush</h3>` +
     options("blushes", "blush-sheet", "Blush") +
     A(() => ({ step: "parts", name, args: { command: "blush", style: String(chosen("blushes")) } }), "Draw her blush"),

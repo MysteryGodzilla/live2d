@@ -56,6 +56,7 @@ comes back in a new form. Commands are `python <kit>/live2d.py ...`.
 | Her eyes close into a black line that isn't hers | She has no drawn closed eyes | `parts closed-eyes <name>` |
 | Her mouth hardly opens | A closed mouth is a line a few pixels high | `parts mouth <name>` draws an open one |
 | Her open mouth is plain, or the wrong kind for her | The default is one simple shape | `parts mouth-sheet <name>` shows the kit's on her face; `parts mouth <name> --style <number>`, or `--file` for a picture of your own |
+| Her open mouth is too big, too small, too high or too low, or tilted wrong | Each mouth is sized and placed from her face and her closed mouth, which suits most faces but not all | `parts mouth <name> --style <n>` with `--size`, `--down`, `--right` and `--turn` (try them first with `mouth-sheet <name>` and the same options); in the GUI, the sliders in step 7 |
 | Her open mouth sits crooked | Handled: her head is tilted in her drawing, and the mouth is turned with her face | If it was drawn before 2026-11-12, run `parts mouth <name>` again |
 | Blush shows past her cheeks | Handled: blush is cut off at her face | Nothing |
 | Her blush stops at a hard, straight edge | Handled: image2live2d laid a part's mesh over its solid middle only, which cut a soft blush off in a rectangle. A blush's mesh now covers all of it | Nothing |

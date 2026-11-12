@@ -14,6 +14,7 @@ drawing and layers (see layers.py for the layers themselves).
       little as a sleeping eye does, as thick as half her upper lash and in her own lash colours.
       With this the rig shows her own closed eyes instead of its stock black ones
   mouth <name> [--style <number> | --file <picture>] [--width <share>] [--flip]
+               [--size <times>] [--down <share>] [--right <share>] [--turn <degrees>]
       her own small mouth becomes mouth_close (the rig shows it while the mouth is shut), and
       mouth_open is drawn for her. With nothing more it is the kit's style 1, as it always was.
       --style picks another of the kit's open mouths by number (mouth-sheet shows them): each is a
@@ -21,11 +22,18 @@ drawing and layers (see layers.py for the layers themselves).
       mouth's line. --file takes your own picture of an open mouth instead, colours and all: a PNG
       that is clear round the mouth, or one on a plain background, which is taken out. --width is
       how wide it is, as a share of her face's width (0.09 for most styles, 0.11 for a picture);
-      --flip mirrors it (a fang on her other side)
-  mouth-sheet [<name>]
+      --flip mirrors it (a fang on her other side). --size makes it bigger or smaller (1.2 is a
+      fifth bigger); --down and --right move it, as a share of her face's width (0.01 is a small
+      step; a minus moves it up or left), along her face as it is turned. --turn tilts it, in degrees (clockwise; a minus
+      tilts it the other way), on top of her face's own tilt. They are kept in her
+      layers.json, so the next mouth and the mouth sheet start from them; --size 1 --down 0
+      --right 0 --turn 0 puts it back
+  mouth-sheet [<name>] [--size <times>] [--down <share>] [--right <share>]
+              [--turn <degrees>]
       the kit's open mouths, numbered: with a name, each one on her own face, in her colours, as
-      <out>/parts/<name>-mouths.png; with none, on plain skin as mouths/sheet.png. Each picture is
-      also saved by itself, <number>-<name>.png, in a folder beside the sheet (the GUI shows those)
+      <out>/parts/<name>-mouths.png, at the size, place and tilt her mouth has (or the ones given, to try
+      them before drawing); with none, on plain skin as mouths/sheet.png. Each picture is also
+      saved by itself, <number>-<name>.png, in a folder beside the sheet (the GUI shows those)
   blush <name> [--style <number> | --file <picture>] [--size <times>] [--in <eye widths>]
                [--down <eye widths>] [--mirror]
       her blush as a layer of her own, in place of the one build draws when she has none (the
@@ -461,6 +469,36 @@ def face_turn(name, info):
     return float(np.degrees(np.arctan2(along[1], along[0])))
 
 
+MOUTH_KEY = "open_mouth"  # layers.json: her open mouth's size and place, {"size", "down", "right", "turn"}
+MOUTH_PLAIN = {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}
+
+
+def mouth_adjust(info, size=None, down=None, right=None, turn=None):
+    """Her open mouth's size, place and tilt: what is given, else what she has (layers.json), else plain."""
+    kept = dict(MOUTH_PLAIN, **info.get(MOUTH_KEY, {}))
+    given = {"size": size, "down": down, "right": right, "turn": turn}
+    out = {k: float(v if v is not None else kept[k]) for k, v in given.items()}
+    if not 0.3 <= out["size"] <= 3:
+        sys.exit("--size: from 0.3 to 3 (1 is the kit's own size)")
+    if abs(out["down"]) > 0.3 or abs(out["right"]) > 0.3:
+        sys.exit("--down and --right: shares of her face's width, from -0.3 to 0.3 (0.01 is a small step)")
+    if abs(out["turn"]) > 45:
+        sys.exit("--turn: degrees, from -45 to 45")
+    return out
+
+
+def moved(at, adjust, face_w, turn):
+    """A point moved down and right by shares of her face's width, along her face as it is turned."""
+    t = np.radians(turn)
+    along, down = np.array([np.cos(t), np.sin(t)]), np.array([-np.sin(t), np.cos(t)])
+    p = np.asarray(at, float) + (adjust["right"] * along + adjust["down"] * down) * face_w
+    return float(p[0]), float(p[1])
+
+
+def adjust_words(adjust):
+    return "".join(f", {k} {adjust[k]:g}" for k in ("size", "down", "right", "turn") if adjust[k] != MOUTH_PLAIN[k])
+
+
 def in_frame(frame, small, pin, at, turn=0.0):
     """A small picture as a layer as big as her frame, its pin at the point `at`, turned about its
     pin by `turn` degrees (clockwise on the screen)."""
@@ -481,7 +519,7 @@ def in_frame(frame, small, pin, at, turn=0.0):
     return part, (left, top, w, h)
 
 
-def do_mouth(name, style=None, file=None, width=None, flip=False):
+def do_mouth(name, style=None, file=None, width=None, flip=False, size=None, down=None, right=None, turn=None):
     info = L.load(name)
     order = info["order"]
     if "mouth" in order:
@@ -490,21 +528,25 @@ def do_mouth(name, style=None, file=None, width=None, flip=False):
         order[order.index("mouth")] = "mouth_close"
         L.note(info, "mouth renamed mouth_close: her own small mouth, shown while it's shut")
     at, line, face_w = mouth_fit(name, info)
+    adjust = mouth_adjust(info, size, down, right, turn)
     if file:
-        wide = (width or FILE_W) * face_w
+        wide = (width or FILE_W) * face_w * adjust["size"]
         small, pin = file_mouth(file, wide, flip)
         what = f"mouth_open from {os.path.basename(file)}, {wide:.0f} px wide"
     else:
         style = style or 1
-        unit = (width or MOUTH_W * MOUTH_STYLES.get(style, ("", 1.0))[1]) * face_w
+        unit = (width or MOUTH_W * MOUTH_STYLES.get(style, ("", 1.0))[1]) * face_w * adjust["size"]
         small, pin = styled_mouth(style, line, unit, flip)
         what = (f"mouth_open from the kit's open mouth {style} ({style_name(style)}), {unit:.0f} px wide, line colour "
                 f"#{''.join(f'{round(v * 255):02x}' for v in line)}")
-    turn = face_turn(name, info)
-    part, (left, top, w, h) = in_frame(info["frame"], small, pin, at, turn)
+    face = face_turn(name, info)
+    turn = face + adjust["turn"]  # her face's own tilt, and any asked for
+    part, (left, top, w, h) = in_frame(info["frame"], small, pin, moved(at, adjust, face_w, face), turn)
     L.write_part(name, "mouth_open", part)
     place(info, "mouth_open", "mouth_close")
-    L.note(info, what + (", mirrored" if flip else "") + (f", turned {turn:+.1f} degrees with her face" if abs(turn) >= 0.5 else ""))
+    info[MOUTH_KEY] = adjust
+    L.note(info, what + (", mirrored" if flip else "") + adjust_words(adjust)
+           + (f", turned {face:+.1f} degrees with her face" if abs(face) >= 0.5 else ""))
     L.save(name, info)
     print(f"{name}: mouth_open {w}x{h} at {left},{top}; order {', '.join(order)}")
 
@@ -601,7 +643,7 @@ def out_path(name, what):
     return kit.out("parts", f"{L.slug(name)}-{what}.png")
 
 
-def do_mouth_sheet(name=None):
+def do_mouth_sheet(name=None, size=None, down=None, right=None, turn=None):
     if name is None:  # on plain skin, for the kit's README
         cells = []
         for style in mouth_styles():
@@ -617,7 +659,9 @@ def do_mouth_sheet(name=None):
     if "mouth_close" not in info["order"]:
         sys.exit(f"{name}: run `parts mouth {name}` once first, so her own mouth is mouth_close")
     at, line, face_w = mouth_fit(name, info)
-    turn = face_turn(name, info)
+    adjust = mouth_adjust(info, size, down, right, turn)
+    face = face_turn(name, info)
+    to, turn = moved(at, adjust, face_w, face), face + adjust["turn"]
     x0, y0, x1, y1 = face_box(name, lower=True)
     hidden = L.SHUT | {"mouth_close", "blush"}
     base, _ = L.composite([(layer, L.read_part(name, layer)[y0:y1, x0:x1]) for layer in info["order"] if layer not in hidden])
@@ -626,10 +670,12 @@ def do_mouth_sheet(name=None):
         now = L.read_part(name, "mouth_open")[y0:y1, x0:x1]
         cells.append(("hers now", now[..., :3] * now[..., 3:4] + base * (1 - now[..., 3:4])))
     for style in mouth_styles():
-        small, pin = styled_mouth(style, line, MOUTH_W * MOUTH_STYLES.get(style, ("", 1.0))[1] * face_w)
-        part = in_frame(info["frame"], small, pin, at, turn)[0][y0:y1, x0:x1]
+        small, pin = styled_mouth(style, line, MOUTH_W * MOUTH_STYLES.get(style, ("", 1.0))[1] * face_w * adjust["size"])
+        part = in_frame(info["frame"], small, pin, to, turn)[0][y0:y1, x0:x1]
         cells.append((f"{style}  {style_name(style)}", part[..., :3] * part[..., 3:4] + base * (1 - part[..., 3:4])))
     sheet(cells, out_path(name, "mouths"))
+    if adjust != MOUTH_PLAIN:
+        print("drawn" + adjust_words(adjust)[1:])
 
 
 BLUSHES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blushes")
@@ -850,6 +896,14 @@ def options(rest, words, flags=()):
     return given
 
 
+def placing(o):
+    """--size, --down, --right and --turn as numbers, None where not given."""
+    try:
+        return tuple(float(o[k]) if k in o else None for k in ("size", "down", "right", "turn"))
+    except ValueError:
+        sys.exit("--size, --down, --right and --turn take numbers, as 1.2 or -0.01")
+
+
 def main(args):
     if not args:
         sys.exit(__doc__)
@@ -867,13 +921,15 @@ def main(args):
     elif cmd == "closed-eyes" and len(rest) == 1:
         do_closed_eyes(rest[0])
     elif cmd == "mouth" and rest:
-        o = options(rest[1:], ("style", "file", "width"), ("flip",))
+        o = options(rest[1:], ("style", "file", "width", "size", "down", "right", "turn"), ("flip",))
         if "style" in o and "file" in o:
             sys.exit("give --style or --file, not both")
         do_mouth(rest[0], int(o["style"]) if "style" in o else None, o.get("file"),
-                 float(o["width"]) if "width" in o else None, o.get("flip", False))
+                 float(o["width"]) if "width" in o else None, o.get("flip", False), *placing(o))
     elif cmd == "mouth-sheet" and len(rest) <= 1:
         do_mouth_sheet(*rest)
+    elif cmd == "mouth-sheet" and rest and not rest[0].startswith("--"):
+        do_mouth_sheet(rest[0], *placing(options(rest[1:], ("size", "down", "right", "turn"))))
     elif cmd == "blush" and rest:
         o = options(rest[1:], ("style", "file", "size", "in", "down"), ("mirror",))
         if "style" in o and "file" in o:

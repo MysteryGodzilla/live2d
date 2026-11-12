@@ -55,7 +55,7 @@ There is also a GUI for people (`live2d.py gui`: the same steps as buttons in a 
 | Split | `split <name> body` | It prints her layers. Expect about 17: hair, face, eyes, brows, nose, mouth, neck, clothes, arms, legs, shoes |
 | Check layers | `layers check <name>` | The count is a few thousand pixels of thin outline. Look at the picture it saves. A solid block of red is a layer covering what it shouldn't |
 | Head pass | `split <name> head`, `layers scale <name> 2`, `layers head ...`, `layers under <name> neck face` | `layers check` again: the count should not jump. Her face layer should line up with her drawing's face |
-| Parts | `parts closed-eyes <name>`, `parts mouth <name>` | Her layers now include `eye_close` and `mouth_open`. Which open mouth and which blush she has is the user's taste: make `parts mouth-sheet <name>` and `parts blush-sheet <name>`, show them the two pictures, and let them pick a number (the README's "Mouths and blushes") |
+| Parts | `parts closed-eyes <name>`, `parts mouth <name>` | Her layers now include `eye_close` and `mouth_open`. Which open mouth and which blush she has is the user's taste: make `parts mouth-sheet <name>` and `parts blush-sheet <name>`, show them the two pictures, and let them pick a number (the README's "Mouths and blushes"). If the mouth is too big, small, high, low or tilted, `--size`, `--down`, `--right` and `--turn` fix it, on `mouth-sheet` first to show them |
 | Build | `build <name>` | Read what it prints (below) |
 | View | `view`, then check sheets (below) | The list in the README, "Trying her model" |
 
