@@ -28,7 +28,7 @@ Our layers go in as they are, with three of them told apart from See-through's n
 - ears, both ears in one layer, is split into left and right;
 - mouth_close is her mouth, and mouth_open, the open mouth parts.py draws, goes in as the mouth's
   inside (image2live2d's mouth_cavity), so it paints none of its own. Opening her mouth fades her
-  closed line out and the drawn open mouth in, growing it from 40% of its height to all of it
+  closed line out and the drawn open mouth in, early, then grows it down to all of its height
   (see mouth_swap): image2live2d's own open pulls the lips apart in proportion to their height, and
   a drawn closed mouth is a line a few pixels high, so it hardly opened (2026-11-10).
 
@@ -79,26 +79,59 @@ ROLES = {
     "mouth_close": SemanticRole.mouth,
     "mouth_open": SemanticRole.mouth_cavity,
 }
-SHUT_HEIGHT = 0.4  # the drawn open mouth's height, as a share of its own, as it starts to fade in
+# Opening her mouth, as her eyes shut (see SQUINT): her closed line stays solid while her drawn open
+# mouth starts as a slit hanging from its top edge, and the two swap over the first tenth of the
+# way; from there the open mouth is solid and grows down to its full height, its top edge (her upper
+# lip) still and the rest dropping, as a jaw does. The two used to crossfade over the whole way, so
+# a mouth half open, as it mostly is in talk, was both half see-through, one over the other (first
+# user, 2026-11-13).
+MOUTH_SWAP = 0.1   # ParamMouthOpenY by which her open mouth has taken over from her closed line
+SLIT = 0.12        # the open mouth's height then, as a share of its own (from 0.06 at 0)
 _mouth_open = author._mouth_open
 
 
 def mouth_swap(param_id, lips, cavity, open_fn):
-    """ParamMouthOpenY as a swap, as image2live2d does a blink: her closed line at 0, her drawn open
-    mouth at 1, crossfading between and the open mouth growing as it shows."""
+    """ParamMouthOpenY as a swap (see MOUTH_SWAP)."""
+    CAVITY[:] = cavity  # for mouth_form, which image2live2d calls next and gives the lips alone
     if not cavity:
         return _mouth_open(param_id, lips, cavity, open_fn)
-    shut = Keyform(value=0.0,
-                   mesh_offsets={**{pid: author._zeros(m) for pid, m in lips},
-                                 **{pid: author._collapse_vertical(m, 1 - SHUT_HEIGHT) for pid, m in cavity}},
-                   opacity_overrides={**{pid: 1.0 for pid, _ in lips}, **{pid: 0.0 for pid, _ in cavity}})
-    opened = Keyform(value=1.0,
-                     mesh_offsets={pid: author._zeros(m) for pid, m in lips + cavity},
-                     opacity_overrides={**{pid: 0.0 for pid, _ in lips}, **{pid: 1.0 for pid, _ in cavity}})
-    return author._set_keyforms(param_id, [shut, opened])
+    top = max(y for _, m in cavity for _, y in m.vertices)  # the rig's y is up: her upper lip
+    hang = lambda m, share: author._collapse_to(m, 1 - share, top)
+    keys = []
+    for value, shut, share in ((0.0, 1.0, SLIT / 2), (MOUTH_SWAP, 0.0, SLIT), (1.0, 0.0, 1.0)):
+        keys.append(Keyform(value=value,
+                            mesh_offsets={**{pid: author._zeros(m) for pid, m in lips},
+                                          **{pid: hang(m, share) if share < 1 else author._zeros(m) for pid, m in cavity}},
+                            opacity_overrides={**{pid: shut for pid, _ in lips}, **{pid: 1 - shut for pid, _ in cavity}}))
+    return author._set_keyforms(param_id, keys)
 
 
 author._mouth_open = mouth_swap
+
+# A smile or frown (ParamMouthForm) raises or lowers her open mouth's corners as much as her closed
+# line's. image2live2d moved her closed line's alone, so a smile went flat as her mouth opened.
+CAVITY = []
+_mouth_form = author._mouth_form
+
+
+def mouth_form(param_id, group, *, mouth_lm=None):
+    param = _mouth_form(param_id, group, mouth_lm=mouth_lm)
+    if not CAVITY or not group:
+        return param
+    if mouth_lm is not None:  # the same measures image2live2d took for her closed line
+        cx, half, height = mouth_lm.center[0], max(mouth_lm.width / 2, 1e-6), max(mouth_lm.height, 1e-6)
+    else:
+        x0, y0, x1, y1 = author._bbox([v for _, m in group for v in m.vertices])
+        cx, half, height = (x0 + x1) / 2, max((x1 - x0) / 2, 1e-6), y1 - y0
+    for key in param.keyforms:
+        sign = 0.0 if key.value == 0 else math.copysign(1.0, key.value)
+        for pid, m in CAVITY:
+            key.mesh_offsets[pid] = [(0.0, sign * min(author._MOUTH_FORM * height * min(abs(x - cx) / half, 1.2),
+                                                       author._MOUTH_CAP)) for x, _ in m.vertices]
+    return param
+
+
+author._mouth_form = mouth_form
 
 # Her hair in sections. image2live2d can swing a sheet of hair as several sections side by side,
 # each on a pendulum of its own, blended across the sheet so it ripples and nothing tears. It

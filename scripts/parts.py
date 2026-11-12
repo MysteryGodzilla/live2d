@@ -64,8 +64,8 @@ drawing and layers (see layers.py for the layers themselves).
       for a character drawn with her mouth open (a grin): her drawn mouth is kept as
       layers/mouth-drawn.png and is mouth_close until w-mouth draws one; mouth_open is that mouth
       drawn taller from its top edge, a bigger laugh when the rig opens her mouth (--no-tongue:
-      with its tongue the colour of the inside). The rig shows mouth_open at half height, growing
-      to full as the mouth opens, so at 0.54 open it's her grin's own size: her rig.json's "rest"
+      with its tongue the colour of the inside). The rig grows mouth_open down from its top edge as
+      the mouth opens, so at 0.76 open it's her grin's own size: her rig.json's "rest"
       can hold her there, so she rests grinning as drawn
   mouth-from <name> <other>
       her mouth layer replaced by her drawn mouth from another of her drawings (its
