@@ -131,6 +131,10 @@ was started from another folder (it can still be used; stop it where it was star
 looks again every 15 seconds, and a click on the badge looks at once. The split steps warn when
 ComfyUI still holds part of the graphics card.
 
+Every large picture (the layer check, her drawing, her cut-out, the contact sheets) has a
+magnifier: hover over it to see that spot bigger, and turn the mouse wheel to zoom from 2 to 12
+times. "Open it full size" under it opens the picture at its own size.
+
 The page runs the same `python live2d.py <step> ...` commands you would type, one at a time, and
 nothing else; it adds no steps of its own. It listens on this PC only. An agent should use the
 commands, not the page.

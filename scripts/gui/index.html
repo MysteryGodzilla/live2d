@@ -81,6 +81,14 @@ summary { cursor: pointer; font-weight: 600; }
 .pics button.pic img { display: block; width: 100%; border: 0; }
 .pics button.pic span { display: block; font-size: 12px; padding: 2px 4px; }
 .pics .big { max-height: 520px; }
+.zoomwrap { display: inline-block; max-width: 100%; }
+.zoomwrap img.zoom { cursor: zoom-in; display: block; }
+.zoomhint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+#lens { position: fixed; z-index: 20; width: 300px; height: 300px; border: 2px solid var(--accent); border-radius: 8px;
+  background-color: #808080; background-repeat: no-repeat; box-shadow: 0 6px 24px rgba(0, 0, 0, .45); pointer-events: none; display: none;
+  image-rendering: pixelated; }
+#lens span { position: absolute; left: 0; bottom: 0; font: 12px system-ui, sans-serif; color: #fff; background: rgba(0, 0, 0, .6); padding: 1px 6px; border-top-right-radius: 6px; }
+@media (hover: none) { .zoomhint .hover { display: none; } }
 .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }
 button.opt { padding: 0; min-height: 0; overflow: hidden; text-align: left; position: relative; }
 button.opt img { display: block; width: 100%; height: auto; border: 0; background: var(--code-bg); }
@@ -124,6 +132,7 @@ iframe { width: 100%; height: 680px; border: 1px solid var(--line); border-radiu
   </aside>
   <main id="main"></main>
 </div>
+<div id="lens"><span id="lenslabel"></span></div>
 <section id="log" class="small">
   <div id="loghead">
     <strong>Log</strong>
@@ -339,6 +348,41 @@ $("main").addEventListener("change", (e) => {
   if (e.target.dataset.redraw) drawMain();
 });
 
+/* ---- the magnifier: a lens that follows the mouse over a picture ---- */
+// It shows the picture `zoom` times as big as the page shows it (never past twice its own pixels,
+// where there is nothing more to see). The wheel changes it, from 2 to 12.
+let zoom = 4;
+function lensAt(e) {
+  const im = e.target.closest("img.zoom"), lens = $("lens");
+  if (!im || !im.naturalWidth) { lens.style.display = "none"; return; }
+  const r = im.getBoundingClientRect();
+  const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  if (fx < 0 || fy < 0 || fx > 1 || fy > 1) { lens.style.display = "none"; return; }
+  const most = 2 * im.naturalWidth / r.width, z = Math.min(zoom, Math.max(2, most));
+  const W = r.width * z, H = r.height * z, size = lens.offsetWidth || 300;
+  lens.style.display = "block";
+  lens.style.backgroundImage = `url("${im.src}")` + (im.dataset.bg === "checker"
+    ? ", linear-gradient(45deg, #c8c8c8 25%, transparent 25%, transparent 75%, #c8c8c8 75%), linear-gradient(45deg, #c8c8c8 25%, #fff 25%, #fff 75%, #c8c8c8 75%)" : "");
+  lens.style.backgroundSize = `${W}px ${H}px` + (im.dataset.bg === "checker" ? ", 20px 20px, 20px 20px" : "");
+  const bx = size / 2 - fx * W, by = size / 2 - fy * H;
+  lens.style.backgroundPosition = `${bx}px ${by}px` + (im.dataset.bg === "checker" ? ", 0 0, 10px 10px" : "");
+  // Beside the mouse, on whichever side has room, and inside the window.
+  let x = e.clientX + 24, y = e.clientY - size / 2;
+  if (x + size > innerWidth - 8) x = e.clientX - size - 24;
+  y = Math.max(8, Math.min(y, innerHeight - size - 8));
+  lens.style.left = x + "px"; lens.style.top = y + "px";
+  $("lenslabel").textContent = `${+z.toFixed(1)}x` + (z < zoom ? " (as far as it goes)" : "");
+}
+$("main").addEventListener("mousemove", lensAt);
+$("main").addEventListener("mouseleave", () => { $("lens").style.display = "none"; });
+$("main").addEventListener("mouseout", (e) => { if (e.target.closest("img.zoom") && !e.relatedTarget?.closest?.("img.zoom")) $("lens").style.display = "none"; });
+$("main").addEventListener("wheel", (e) => {
+  if (!e.target.closest("img.zoom")) return;
+  e.preventDefault();  // over a picture the wheel zooms instead of scrolling the page
+  zoom = Math.max(2, Math.min(12, zoom + (e.deltaY < 0 ? 1 : -1)));
+  lensAt(e);
+}, { passive: false });
+
 /* ---- jobs and the log ---- */
 function showJob(j) {
   job = j;
@@ -391,7 +435,11 @@ function select(key, options, def, redraw) {
     options.map((o) => `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("") + "</select>";
 }
 function pickOf(layers, preferred) { return layers.includes(preferred) ? preferred : (layers[0] || ""); }
-function img(url, alt, cls) { return url ? `<div class="pics"><img class="${cls || ""}" src="${esc(url)}" alt="${esc(alt)}"></div>` : ""; }
+function img(url, alt, cls) {
+  return url ? `<div class="pics"><div class="zoomwrap"><img class="zoom ${cls || ""}" src="${esc(url)}" alt="${esc(alt)}">` +
+    `<div class="zoomhint"><span class="hover">Hover to magnify; the mouse wheel zooms in and out. </span>` +
+    `<a href="${esc(url)}" target="_blank" rel="noopener">Open it full size</a></div></div></div>` : "";
+}
 function stepBox(n, title, done, tags, body, isNext) {
   return `<section class="step ${isNext ? "next" : ""}"><h2><span class="tick ${done ? "done" : ""}" title="${done ? "Done" : "Not done"}">${done ? "&#10003;" : ""}</span>` +
     `${n}. ${esc(title)} ${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}${isNext ? '<span class="tag next">next</span>' : ""}</h2>${body}</section>`;
@@ -483,7 +531,8 @@ function drawMain() {
     GPU_NOTE + comfyBox() +
     A(() => ({ step: "cutout", name }), "Cut out", { gpu: true }) +
     A(() => ({ step: "upscale", name }), "Upscale", { gpu: true }) +
-    (p.cutout ? `<div class="pics"><div class="checker"><img src="${esc(p.cutout)}" alt="Her cut-out on a checkerboard"></div></div>` : ""),
+    (p.cutout ? `<div class="pics"><div class="zoomwrap"><div class="checker"><img class="zoom" data-bg="checker" src="${esc(p.cutout)}" alt="Her cut-out on a checkerboard"></div>` +
+      `<div class="zoomhint"><span class="hover">Hover to magnify; the mouse wheel zooms in and out. </span><a href="${esc(p.cutout)}" target="_blank" rel="noopener">Open it full size</a></div></div></div>` : ""),
     first === 2));
 
   // 4. Split into layers
