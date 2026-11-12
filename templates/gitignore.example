@@ -1,0 +1,4 @@
+# Lines for the project's .gitignore. Change "out/" if the settings' "out" is another folder.
+out/
+__pycache__/
+.env

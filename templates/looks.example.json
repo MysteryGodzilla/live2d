@@ -1,0 +1,30 @@
+{
+  "_about": "What each character looks like, and the art styles you draw them in. `live2d.py draw <round> --character <name>` reads it. Its place is <characters>/looks.json, or the settings' \"looks\". A look is plain words: hair, eyes, build and clothes, from head to shoes. Don't describe the pose or the background: the kit adds those itself, because the pose is what makes a drawing rig well. A key that starts with _ is a note and is skipped.",
+  "characters": {
+    "mika": {
+      "looks": {
+        "default": "A young woman with long straight teal hair with blunt bangs, amber eyes and a calm smile. She wears a cream knitted cardigan over a white collared shirt, a navy pleated skirt, black knee-high socks and brown loafers.",
+        "summer": "A young woman with long straight teal hair tied in a high ponytail with blunt bangs, amber eyes and a calm smile. She wears a white sleeveless sundress with a blue ribbon at the waist and white sandals."
+      },
+      "negative": ""
+    }
+  },
+  "styles": {
+    "_about": "Optional. `--style <name>` draws in one of these. \"words\" take the place of the kit's own art style words and go first in the prompt, which is where a LoRA's trigger words belong. \"lora\" is a file in <models>/loras/, with \"strength\". \"unet\" is another diffusion model in <models>/diffusion_models/, in place of the settings' own. \"steps\" and \"cfg\" are that model's sampler settings (8 and 1 without them, the turbo model's). \"negative\" only has an effect with cfg above 1. For `draw --runpod`, a LoRA also needs \"url\" and \"sha256\", so the worker can fetch it.",
+    "soft": {
+      "words": "Soft pastel anime illustration, thin clean line art, gentle flat shading."
+    },
+    "_a style with a LoRA": {
+      "words": "mystyle, flat colour.",
+      "lora": "my-style.safetensors",
+      "strength": 0.8
+    },
+    "_a style with a model of its own": {
+      "words": "mystyle.",
+      "unet": "my-tuned-model.safetensors",
+      "steps": 20,
+      "cfg": 2.5,
+      "negative": "blurry, extra limbs"
+    }
+  }
+}

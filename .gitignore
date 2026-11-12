@@ -1,0 +1,11 @@
+# What is yours, not the kit's: your characters, what the kit makes from them, and your settings.
+characters/
+out/
+live2d-kit.json
+.env
+
+__pycache__/
+
+# Claude Code's own files for this folder, apart from the pointer that makes the kit's skill findable.
+.claude/*
+!.claude/skills/

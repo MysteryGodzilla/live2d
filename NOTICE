@@ -1,0 +1,9 @@
+Live2D kit: one drawing to a rigged Live2D model
+Copyright 2026 MysteryGodzilla
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This kit includes code from image2live2d by Wzhang3912
+(https://github.com/Wzhang3912/image2live2d, commit 714e7cc), licensed under the Apache License,
+Version 2.0. It is in vendor/image2live2d/ and vendor/tools/, unchanged, with its licence;
+vendor/README.md lists what was taken and how the kit uses it.

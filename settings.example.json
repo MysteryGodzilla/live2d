@@ -1,0 +1,15 @@
+{
+  "characters": "characters",
+  "out": "out",
+  "comfyui": {
+    "python": "C:/AI/ComfyUI_windows_portable/python_embeded/python.exe",
+    "main": "C:/AI/ComfyUI_windows_portable/ComfyUI",
+    "url": "http://127.0.0.1:8189",
+    "models": "C:/AI/models"
+  },
+  "seethrough": {
+    "repo": "C:/AI/see-through/repo",
+    "python": "C:/AI/see-through/venv/Scripts/python.exe",
+    "hf_home": "C:/AI/hf-cache"
+  }
+}
