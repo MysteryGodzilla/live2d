@@ -46,7 +46,7 @@ def script(name):
 
 def run(python, name, *args, env=None):
     """One of the kit's scripts with the Python it needs, from the project's folder."""
-    command = [python, "-I", script(name), *args]
+    command = [python, "-I", "-X", "utf8", script(name), *args]  # -I leaves PYTHONUTF8 out, so say it here
     print("> " + " ".join(f'"{a}"' if " " in a else a for a in command), flush=True)
     done = subprocess.run(command, cwd=kit.project(), env=dict(os.environ, PYTHONUTF8="1", **(env or {})))
     if done.returncode:

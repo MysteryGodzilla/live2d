@@ -112,13 +112,13 @@ iframe { width: 100%; height: 680px; border: 1px solid var(--line); border-radiu
   </aside>
   <main id="main"></main>
 </div>
-<section id="log">
+<section id="log" class="small">
   <div id="loghead">
     <strong>Log</strong>
     <code id="logcmd">Nothing has run yet.</code>
     <span id="logstate"></span>
     <button type="button" id="logstop" disabled>Stop</button>
-    <button type="button" id="logsize">Smaller</button>
+    <button type="button" id="logsize">Bigger</button>
   </div>
   <pre id="logout"></pre>
 </section>
@@ -246,12 +246,14 @@ async function runReq(req, gpu) {
   try {
     const r = await api("/api/run", Object.assign({}, req, gpu ? { gpu_ok: true } : {}));
     job = { id: r.id, state: "running", command: r.command, output: "" };
+    logSize(false);
     showJob(job);
     track(r.id);
   } catch (e) {
     $("logcmd").textContent = "Not started.";
     $("logstate").textContent = "";
     $("logout").textContent = e.message;
+    logSize(false);
   }
 }
 $("main").addEventListener("click", (e) => {
@@ -328,10 +330,14 @@ $("logstop").onclick = async () => {
   if (!job) return;
   try { await api("/api/stop/" + job.id, {}); } catch (e) { $("logout").textContent += "\n" + e.message; }
 };
-$("logsize").onclick = () => {
-  const small = $("log").classList.toggle("small");
+/* The log is a thin bar until something runs, and the page keeps room for it under its last step. */
+function logSize(small) {
+  $("log").classList.toggle("small", small);
   $("logsize").textContent = small ? "Bigger" : "Smaller";
-};
+  document.body.style.paddingBottom = (small ? 60 : $("log").offsetHeight + 20) + "px";
+}
+$("logsize").onclick = () => logSize(!$("log").classList.contains("small"));
+logSize(true);
 
 /* ---- form pieces ---- */
 function input(key, def, attrs) { return `<input data-k="${esc(key)}" value="${esc(val(key, def))}" ${attrs || ""}>`; }
