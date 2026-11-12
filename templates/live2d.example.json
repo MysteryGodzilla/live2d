@@ -1,8 +1,12 @@
 {
   "_about": "One character's own settings for the build. Copy to <characters>/<name>/layers/full/live2d.json and keep only the lines she needs. Most characters need no such file. The names are her layers' names, as `live2d.py status <name>` lists them.",
-  "tucked": {"topwear": "bottomwear"},
+  "tucked": {
+    "topwear": "bottomwear"
+  },
   "_tucked": "A top tucked into a skirt: the top is drawn under the skirt and grown a little downward where the skirt hides it, so no gap opens at her waist when she moves.",
   "whole": [],
   "_whole": "Layers that are part of her body and must not swing or be cut into limbs, such as [\"topwear\", \"coat back\"] for a long open coat, or [\"handwear\"] for arms that touch her body.",
+  "rims": true,
+  "_rims": "false leaves the pale line on her edges as it is: for a character drawn with a light outline of her own.",
   "why": "One line on what you saw that made you add this, for whoever reads it next."
 }

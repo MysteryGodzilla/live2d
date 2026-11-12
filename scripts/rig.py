@@ -102,6 +102,41 @@ author._mouth_open = mouth_swap
 _build_mesh = mesh_build.build_mesh
 
 
+def whole_mesh(layer, *, grid=mesh_build.DEFAULT_GRID, alpha_threshold=mesh_build.DEFAULT_ALPHA_THRESHOLD, tighten=True):
+    """A part's mesh with every cell that holds any of it. image2live2d's build_mesh (which this
+    follows) keeps a cell of its lattice when one of nine points probed in it is on the part. A thin
+    line passes between the points: a glasses rim came out with gaps in it, and thin strands of
+    hair lost their tips. Here a cell is kept when any pixel in it is on the part."""
+    import numpy as np
+    with Image.open(layer.texture_path) as img:
+        alpha = img.convert("RGBA").getchannel("A")
+    width, height = alpha.size
+    px = alpha.load()
+    x0, y0, x1, y1 = layer.bbox  # in the picture, y down
+    rect, uv = (x0, 1.0 - y1, x1, 1.0 - y0), mesh_build.FULL_UV  # in the model, y up
+    if tighten:
+        box = mesh_build.alpha_bbox(lambda x, y: px[x, y], width, height, alpha_threshold)
+        if box is not None:
+            uv = (box[0] / width, box[1] / height, (box[2] + 1) / width, (box[3] + 1) / height)
+            rect = mesh_build._subrect(rect, uv)
+    u0, v0, u1, v1 = uv
+    solid = np.asarray(alpha)
+    most = np.zeros((grid, grid), np.uint8)  # each cell's most solid pixel: [row from the top][column]
+    for j in range(grid):
+        ya, yb = int(np.floor((v0 + (v1 - v0) * j / grid) * height)), int(np.ceil((v0 + (v1 - v0) * (j + 1) / grid) * height))
+        for i in range(grid):
+            xa, xb = int(np.floor((u0 + (u1 - u0) * i / grid) * width)), int(np.ceil((u0 + (u1 - u0) * (i + 1) / grid) * width))
+            cell = solid[max(ya, 0):yb, max(xa, 0):xb]
+            most[j, i] = cell.max() if cell.size else 0
+
+    def in_cell(u, v):
+        i = min(grid - 1, max(0, int((u - u0) / max(u1 - u0, 1e-9) * grid)))
+        j = min(grid - 1, max(0, int((v - v0) / max(v1 - v0, 1e-9) * grid)))
+        return int(most[j, i])
+
+    return mesh_build.grid_mesh(layer.id, rect, in_cell, grid=grid, uv_rect=uv, alpha_threshold=alpha_threshold)
+
+
 def soft_mesh(layer, **how):
     """A blush's mesh over all of it. image2live2d lays a part's mesh over the box of its solid
     pixels (alpha 64 and up), which keeps a decomposer's stray specks out of it; a blush is soft all
@@ -109,7 +144,7 @@ def soft_mesh(layer, **how):
     "cheeks have hard cut offs"). Its mesh here is a whole lattice over the box of everything the
     texture atlas keeps of it (alpha above 8), the same box the atlas cuts."""
     if layer.semantic_role is not SemanticRole.blush:
-        return _build_mesh(layer, **how)
+        return whole_mesh(layer, **how)
     with Image.open(layer.texture_path) as img:
         alpha = img.convert("RGBA").getchannel("A")
     box = alpha.point(lambda a: 255 if a > 8 else 0).getbbox()
@@ -928,6 +963,55 @@ def i2l_tool(name):
     return mod
 
 
+# A pale rim: where a part's edge met the drawing's light background, the split leaves edge pixels
+# that are part her and part background, lighter than anything of hers beside them. On a dark
+# background, or over a darker part of her, they show as a thin light line round hair and clothes.
+# Such a pixel takes the colour of her own pixels just inside it (usually her outline). Only pixels
+# lighter than those are touched: a dark outline, and a highlight further in, stay as drawn.
+# Her face's fine parts are left out: a mouth or a brow is a thin line with no inside, and the clean
+# recoloured a faint mouth line from its darker corners.
+FINE = {"mouth", "mouth_close", "mouth_open", "nose", "eyebrow", "eyelash", "eyewhite", "irides", "eye_close",
+        "blush", "eyewear", "earwear"}
+RIM = 3          # how far in from her edge a pixel still counts as on her rim, in her frame's pixels
+RIM_PALE = 0.08  # ...and how much lighter than the inside beside it (0 to 1) makes it a pale one
+
+
+def clean_rim(img, reach=RIM):
+    """The picture with its pale rim pixels recoloured, and how many there were."""
+    import numpy as np
+    from PIL import ImageFilter
+    box = img.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+    if not box:
+        return img, 0
+    box = (max(box[0] - 1, 0), max(box[1] - 1, 0), min(box[2] + 1, img.width), min(box[3] + 1, img.height))
+    crop = img.crop(box)
+    rgb = np.asarray(crop.convert("RGB"), np.float32) / 255
+    alpha = np.asarray(crop.getchannel("A"), np.float32) / 255
+    solid = Image.fromarray(((alpha >= 0.9) * 255).astype(np.uint8))
+    inner = np.asarray(solid.filter(ImageFilter.MinFilter(2 * reach + 1))) > 0  # this far inside her edge
+    if not inner.any():
+        return img, 0
+    colour, known = rgb * inner[..., None], inner.copy()
+    for _ in range(reach + 3):  # the inside's colours carried outward, a pixel at a time
+        total, count = np.zeros_like(colour), np.zeros(alpha.shape, np.float32)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dy or dx:
+                    total += np.roll(colour * known[..., None], (dy, dx), axis=(0, 1))
+                    count += np.roll(known, (dy, dx), axis=(0, 1))
+        new = ~known & (count > 0)
+        colour[new] = total[new] / count[new][:, None]
+        known |= new
+    light = np.array([0.3, 0.59, 0.11], np.float32)
+    pale = (alpha > 0) & ~inner & known & (rgb @ light - colour @ light > RIM_PALE)
+    if not pale.any():
+        return img, 0
+    rgb[pale] = colour[pale]
+    done = img.copy()
+    done.paste(Image.fromarray((np.dstack([rgb, alpha]) * 255).round().astype(np.uint8), "RGBA"), box[:2])
+    return done, int(pale.sum())
+
+
 def layers_dir(name):
     """Her layers folder, as in layers.py: akane, or akane/working."""
     who, _, pose = name.partition("/")
@@ -950,6 +1034,8 @@ def settings(name):
       a skirt to swing and a bodice to bounce, and takes a long open coat for the skirt (on one:
       it swung her coat and its inside each on its own, and left her real skirt still); a torso
       layer is none of those.
+    - rims: false leaves pale edge pixels as they are (see clean_rim), for a character drawn with
+      a light outline of her own.
     - tucked: {"topwear": "bottomwear"} for a top tucked into a skirt. The layers stop where they
       meet, so when either moves a gap opens between them (first user, 2026-11-10: "extending a
       little bit of shirt and ensuring its behind the skirt would stop the gap"). The first layer
@@ -1007,18 +1093,28 @@ def write_layers(name):
     shutil.rmtree(dst, ignore_errors=True)
     os.makedirs(dst)
     images, copies, sharp, changed = {}, {}, [], []
+    rims = settings(name).get("rims", True)  # "rims": false in her live2d.json leaves her edges as they are
     if os.path.exists(os.path.join(src, "sharp.json")):  # her head's layers at the head pass's own size
         with open(os.path.join(src, "sharp.json"), encoding="utf-8") as f:
             for layer, where in json.load(f).items():
                 path = os.path.join(src, "parts", layer + "@head.png")
                 if layer in info["order"] and os.path.exists(path):
-                    copies[layer] = (Image.open(path).convert("RGBA"), where["at"], where["per"])
+                    copy = Image.open(path).convert("RGBA")
+                    if rims and layer not in FINE:
+                        copy = clean_rim(copy, round(RIM / where["per"][0]))[0]
+                    copies[layer] = (copy, where["at"], where["per"])
     SHARP.clear()
+    pale = 0
     for layer in info["order"]:
         if layer not in LEFT_OUT:
             img = Image.open(os.path.join(src, "parts", layer + ".png")).convert("RGBA")
             # A blush is faint and soft on purpose: the cleaning would take its edge and its strokes.
             images[layer] = img if layer == "blush" else sources.drop_specks(sources._clean_alpha(img))
+            if rims and layer not in FINE:
+                images[layer], n = clean_rim(images[layer])
+                pale += n
+    if pale:
+        print(f"   pale rim: {pale} edge pixels that were lighter than her beside them took her colour")
     for under, over in tucked.items():
         images[under] = tuck(images[under], images[over])
     names = drawing_order(info["order"], tucked)

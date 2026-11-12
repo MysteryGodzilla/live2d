@@ -368,6 +368,9 @@ Two things are settings, not fixes. They go in `<characters>/<name>/layers/full/
 
 - `tucked`: a top tucked into a skirt. Without it a gap can open at her waist when she moves. The
   top is drawn under the skirt and grown a little downward where the skirt hides it.
+- `"rims": false` (not shown above): `build` recolours the thin pale line that hair, skin and
+  clothes edges carry from the drawing's light background. Switch it off for a character who is
+  drawn with a light outline of her own.
 - `whole`: layers that are part of her body and must not swing. Use it for a long open coat. The
   rigger takes a long coat for a skirt and swings it, and then leaves her real skirt still.
 
