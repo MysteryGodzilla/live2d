@@ -50,8 +50,8 @@ drawing and layers (see layers.py for the layers themselves).
       is, in its colour, tilted as her face is. The rig swaps it in for her closed mouth with
       ParamMouthPout, which her pouting expression sets along with her puffed cheeks
       (ParamCheekPuff); she can still talk through it. Styles: 1 a peak (a short upside-down V), 2 a
-      wavy line, 3 a "3" (pursed lips), 4 pursed (two small arches), 5 flat (a line with a tick down
-      at each end). --try draws all of them on her face as
+      wavy line, 3 a "3" (pursed lips), 4 pursed (two small arches), 5 flat (a wide H: a line with a short
+      tick across each end). --try draws all of them on her face as
       <out>/parts/<name>-pouts.png and changes nothing. --size and --thick are its size and its
       line's thickness, --down and --right move it, in shares of her face's width; what you give is
       kept in layers.json. Without one, her pouting expression uses her own closed mouth, turned
@@ -817,7 +817,7 @@ POUT_STYLES = {1: "peak", 2: "wavy", 3: "three", 4: "pursed", 5: "flat"}
 
 
 def pout_stroke(style, wide):
-    """A pout's stroke about its middle, in pixels with y down, and how thick each point is (0 to 1)."""
+    """A pout's strokes about its middle, in pixels with y down: [(points, how thick each is, 0 to 1)]."""
     u = np.linspace(-1, 1, 200)
     if style == 1:    # a short line up to a soft peak a little left of the middle, then down: a sulk
         top = -0.15
@@ -829,15 +829,17 @@ def pout_stroke(style, wide):
         pts = np.stack([0.30 * wide * (np.abs(np.sin(np.pi * u)) - 0.5), u * 0.40 * wide], axis=1)
     elif style == 4:  # two small arches side by side: lips pressed shut over a mouthful of air
         pts = np.stack([u * wide * 0.42, -0.2 * wide * (np.abs(np.sin(np.pi * u)) ** 0.8 - 0.5)], axis=1)
-    elif style == 5:  # a flat line with a short tick down at each end, as a puffed-cheek mouth is often drawn
-        tick, flat = 0.26 * wide, wide * 0.5
-        d = (u + 1) / 2 * (2 * tick + 2 * flat)  # the way along: down-tick, the line, down-tick
-        x = np.clip(d - tick, 0, 2 * flat) - flat
-        y = np.where(d < tick, tick - d, np.where(d > tick + 2 * flat, d - tick - 2 * flat, 0.0)) - tick / 2
-        return np.stack([x, y], axis=1), np.full_like(u, 0.8)
+    elif style == 5:  # a wide H, as a puffed-cheek mouth is often drawn: a line arched a little, with a
+        # short tick across each end (the corners of lips pressed shut), each bowed a little outward
+        wide = wide * 1.6  # wider than the others, so its ticks are lines and not knobs
+        half, tick, bow = 0.5 * wide, 0.15 * wide, 0.02 * wide
+        ends = 0.3 + 0.3 * np.cos(np.pi * u / 2) ** 0.5  # a tick thins to a point at each end
+        return [(np.stack([u * half, -0.05 * wide * (1 - u * u)], axis=1), np.full_like(u, 0.6)),
+                (np.stack([-half - bow * (1 - u * u), u * tick], axis=1), ends),
+                (np.stack([half + bow * (1 - u * u), u * tick], axis=1), ends)]
     else:
         sys.exit(f"pout style {style}: there are " + ", ".join(f"{k} ({v})" for k, v in POUT_STYLES.items()))
-    return pts, 0.5 + 0.5 * np.cos(np.pi * u / 2) ** 0.6
+    return [(pts, 0.5 + 0.5 * np.cos(np.pi * u / 2) ** 0.6)]
 
 
 def do_mouth_pout(name, style=None, given=None, trying=False):
@@ -867,8 +869,11 @@ def do_mouth_pout(name, style=None, given=None, trying=False):
     rgb = colour * 0.65 + LINE_DARK * 0.35
 
     def part(n, shape, corner=(0.0, 0.0), per=1.0):
-        pts, thin = pout_stroke(n, POUT_W * face_w * adjust["size"])
-        return line_part(shape, at + pts @ spin, thick * thin, rgb, corner, per)
+        out = None
+        for pts, thin in pout_stroke(n, POUT_W * face_w * adjust["size"]):
+            one = line_part(shape, at + pts @ spin, thick * thin, rgb, corner, per)
+            out = one if out is None else over(one, out)
+        return out
 
     # The picture: every style on her face, her closed mouth out of the way.
     x0, y0, x1, y1 = face_box(name, lower=True)

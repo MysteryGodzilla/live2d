@@ -466,7 +466,7 @@ python live2d.py parts mouth-pout akane --style 1
 
 `--try` draws them all on her face (`<out>/parts/akane-full-pouts.png`) and changes nothing:
 1 a peak (a short upside-down V), 2 a wavy line, 3 a "3" (pursed lips), 4 pursed (two small
-arches), 5 flat (a line with a tick down at each end). `--size`, `--thick`,
+arches), 5 flat (a wide H: a line with a short tick across each end). `--size`, `--thick`,
 `--down` and `--right` change its size, its line and its place, and are kept. The rig swaps it in
 for her closed mouth with `ParamMouthPout`, which `pouting` sets. She can still talk through it.
 A character with no pout mouth pouts with her own closed mouth, turned down.
