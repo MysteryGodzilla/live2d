@@ -110,7 +110,7 @@ UNDER_EVEN = 0.012 # under: colours are evened out over this many columns each s
 # Layers the rig shows only with her eyes shut, her mouth open or her cheeks flushed (parts.py
 # makes them): the drawing has her eyes open, mouth shut and no blush, so check and repair leave
 # these out.
-SHUT = {"eye_close", "eye_close2", "mouth_open", "mouth_oh", "blush"}
+SHUT = {"eye_close", "eye_close2", "mouth_open", "mouth_oh", "mouth_pout", "blush"}
 
 
 POSES = {"working", "full"}  # drawings with layers of their own, besides her base (idle)

@@ -182,6 +182,16 @@ def build_command(req):
             if sub == "mouth-line" and args.get("mode") in ("try", "back"):
                 out = ["parts", sub, name, "--" + args["mode"]] + (out[3:] if args["mode"] == "try" else [])
             return out, False
+        if sub == "mouth-pout":
+            out = ["parts", sub, name]
+            if args.get("mode") == "try":
+                out.append("--try")
+            elif args.get("style") not in (None, ""):
+                out += ["--style", str(number(args, "style", "Style", 1, 9, whole=True))]
+            for key, low, high in POUT_RANGES:
+                if args.get(key) not in (None, ""):
+                    out += [f"--{key}", f"{number(args, key, key.capitalize(), low, high):g}"]
+            return out, False
         if sub in ("iris", "iris-sheet"):
             if sub == "iris" and args.get("mode") == "back":
                 return ["parts", "iris", name, "--back"], False
@@ -375,7 +385,7 @@ def pictures(name):
     return {"drawing": url_for("characters", f"{name}/full/base.png"), "cutout": url_for("characters", f"{name}/full/cutout.png"),
             "twice": url_for("characters", f"{name}/full/base-2x.png"), "check": url_for("out", f"layers/{slug}-check.png"),
             "mouths": url_for("out", f"parts/{slug}-mouths.png"), "blushes": url_for("out", f"parts/{slug}-blushes.png"),
-            "irises": url_for("out", f"parts/{slug}-irises.png"), "iris": url_for("out", f"parts/{slug}-iris.png"),
+            "irises": url_for("out", f"parts/{slug}-irises.png"), "iris": url_for("out", f"parts/{slug}-iris.png"), "pouts": url_for("out", f"parts/{slug}-pouts.png"),
             "sheet": url_for("out", f"live2d/checks/{slug}-sheet.png")}
 
 
@@ -407,12 +417,14 @@ def choices(kind, name):
 MOUTH_RANGES = (("size", 0.3, 3), ("down", -0.3, 0.3), ("right", -0.3, 0.3), ("turn", -45, 45))
 BLUSH_RANGES = (("size", 0.3, 3), ("in", -1, 1), ("down", -1, 1), ("turn", -60, 60))
 LINE_RANGES = (("size", 0.5, 3), ("thick", 0.3, 4), ("dark", 0, 1))
+POUT_RANGES = (("size", 0.4, 3), ("thick", 0.3, 4), ("down", -0.3, 0.3), ("right", -0.3, 0.3))
 IRIS_RANGES = (("size", 0.5, 2), ("tall", 0.8, 1.6), ("down", -0.5, 0.5), ("right", -0.5, 0.5))
 # What layers.json keeps for each (parts.py's MOUTH_KEY, BLUSH_KEY and LINE_KEY), and their plain values.
 KEPT = {"mouths": ("open_mouth", {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}),
         "blushes": ("blush_place", {"size": 1.0, "in": 0.0, "down": 0.0, "turn": 0.0}),
         "line": ("mouth_line", {"size": 1.0, "thick": 1.0, "dark": 0.35}),
-        "irises": ("iris", {"size": 1.0, "tall": 1.0, "down": 0.0, "right": 0.0})}
+        "irises": ("iris", {"size": 1.0, "tall": 1.0, "down": 0.0, "right": 0.0}),
+        "pouts": ("pout_mouth", {"size": 1.0, "thick": 1.0, "down": 0.0, "right": 0.0})}
 
 
 def kept(kind, name):
@@ -440,6 +452,18 @@ def oh_state(name):
             now = int(m.group(1))
             break
     return {"has": "mouth_oh" in info.get("order", []), "now": now}
+
+
+def pout_state(name):
+    """Her pout mouth (parts mouth-pout): whether she has one, its style, its size and place."""
+    try:
+        with open(os.path.join(live2d.paths(name)["layers"], "layers.json"), encoding="utf-8") as f:
+            info = json.load(f)
+    except (OSError, ValueError):
+        info = {}
+    style = (info.get("pout_mouth") or {}).get("style")
+    return {"has": "mouth_pout" in info.get("order", []), "style": style if isinstance(style, int) else None,
+            "adjust": kept("pouts", name)}
 
 
 def iris_state(name):
@@ -529,7 +553,7 @@ def one_character(name):
             "layers": d["order"], "frame": d["frame"], "pictures": pictures(name), "head_psds": psds,
             "built": os.path.exists(d["paths"]["model"]), "model": name + "-full",
             "mouths": choices("mouths", name), "blushes": choices("blushes", name), "line": line_state(name), "oh": oh_state(name),
-            "eyes": eyes_state(name), "irises": dict(choices("irises", name), **iris_state(name))}
+            "eyes": eyes_state(name), "irises": dict(choices("irises", name), **iris_state(name)), "pouts": pout_state(name)}
 
 
 def rounds():

@@ -681,6 +681,13 @@ function drawMain() {
   const irisOther = irises.style && irises.style.length > 1 && irises.style[1] !== irises.style[0] ? String(irises.style[1]) : "";
   // The colour always goes: an empty box is the iris's own colours, not the colour she had.
   const irisLook = () => Object.assign({ colour: String(val("iris_colour", irises.colour || "")).trim() || "own" }, irisS.place());
+  const pouts = c.pouts || { has: false, style: null, adjust: { size: 1, thick: 1, down: 0, right: 0 } };
+  const poutS = sliderSet("pout_", pouts.adjust, [
+    ["size", "Size", 50, 250, 5, pct, "%"],
+    ["thick", "Thickness", 40, 300, 10, pct, "%"],
+    ["down", "Down", -8, 8, 0.25, pct, "% of her face"],
+    ["right", "Right", -8, 8, 0.25, pct, "% of her face"],
+  ], { size: 1, thick: 1, down: 0, right: 0 });
   const line = c.line || { redrawn: false, adjust: { size: 1, thick: 1, dark: 0.35 } };
   const eyes = c.eyes || { seed: 1, seed_known: false, tiles: [], now_url: null, redrawn: false };
   const lineS = sliderSet("line_", line.adjust, [
@@ -740,6 +747,13 @@ function drawMain() {
       `<img loading="lazy" src="${esc(t.url)}" alt="Mouth ${t.n}, ${esc(t.name)}">` + (c.oh && c.oh.has && t.n === c.oh.now ? `<b class="now">she has this</b>` : "") +
       `<span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>` +
     A(() => ({ step: "parts", name, args: { command: "mouth-oh", style: String(chosen("oh")) } }), c.oh && c.oh.has ? "Draw her O mouth again" : "Draw her O mouth") +
+    `<h3>Her pout mouth</h3>` +
+    `<p class="muted">Optional. A small closed mouth for a sulk, drawn where her own is: her pouting expression shows it, with her cheeks puffed out. Without one, that expression turns her own closed mouth down. Show draws the three on her face and changes nothing. Build again after drawing one.</p>` +
+    poutS.html +
+    `<div class="row"><label>Style ${select("pout_style", ["1 peak", "2 wavy", "3 three"], ["1 peak", "2 wavy", "3 three"][(pouts.style || 1) - 1] || "1 peak")}</label></div>` +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-pout", mode: "try" }, poutS.place()) }), "Show them on her face") +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-pout", style: String(val("pout_style", ["1 peak", "2 wavy", "3 three"][(pouts.style || 1) - 1] || "1 peak")).slice(0, 1) }, poutS.place()) }), pouts.has ? "Draw her pout mouth again" : "Draw her pout mouth") +
+    img(c.pictures.pouts, "The pout mouths on her face") +
     `<h3>Her blush</h3>` +
     blushS.html +
     `<p class="muted">Her blush's size and place. Closer moves the two marks toward her nose (a minus: apart), Down lowers them (a minus: raises them), and Tilt leans them, the outer ends lower (a minus: higher), mirrored so both lean the same way on her face. "Show them on her face" draws every blush with these.</p>` +

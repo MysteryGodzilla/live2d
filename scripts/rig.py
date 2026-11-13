@@ -80,6 +80,7 @@ ROLES = {
     "mouth_close": SemanticRole.mouth,
     "mouth_open": SemanticRole.mouth_cavity,
     "mouth_oh": SemanticRole.mouth_cavity,  # her "O" mouth (see mouth_shapes)
+    "mouth_pout": SemanticRole.mouth,       # her pout mouth (see pout)
 }
 # Opening her mouth, as her eyes shut (see SQUINT): her closed line stays solid while her drawn open
 # mouth starts as a slit hanging from its top edge, and the two swap over the first tenth of the
@@ -554,6 +555,61 @@ def mouth_shapes(rig, fig):
         Keyform(value=1.0, opacity_overrides={**{p.id: 0.0 for p in opened}, **{p.id: 1.0 for p in oh}})]))
 
 
+# Puffed cheeks (ParamCheekPuff), for a sulk: her face's outline swells outward and a little down
+# beside and below her mouth, as cheeks full of air do. A point moves by how far out from the middle
+# of her face it is (nothing in the middle third, so her mouth and nose stay put; all of it from
+# most of the way out, so her outline moves whole) and by its height (most a little above her
+# mouth, nothing along the lowest part of her jaw, so her chin keeps its point, or from her eyes
+# up). Her blush rides on the cheek. Her side hair doesn't move: a cheek swells under it.
+# "cheek_puff": 1.3 in her live2d.json makes hers that many times as far (0 to 2).
+PUFF = 0.05        # how far a cheek's outline goes out, in face widths
+PUFF_DROP = 0.3    # ...and down, as a share of that
+PUFF_TIMES = [1.0]  # her own amount, set when her layers are written
+
+
+def cheek_puff(rig, fig):
+    face = next(((p, m) for p, m in fig.head if p.semantic_role is SemanticRole.face_base), None)
+    if face is None or by_id(rig, "ParamCheekPuff") is not None:
+        return
+    x0, y0, x1, y1 = DRAWN.get(face[0].id) or box(face[1].vertices)
+    cx, half = (x0 + x1) / 2, max((x1 - x0) / 2, 1e-6)
+    mouths = [DRAWN.get(p.id) or box(m.vertices) for p, m in fig.head if p.semantic_role is SemanticRole.mouth]
+    eyes = [DRAWN.get(p.id) or box(m.vertices) for p, m in fig.head
+            if p.semantic_role in (SemanticRole.eye_white_l, SemanticRole.eye_white_r, SemanticRole.eye_l, SemanticRole.eye_r)]
+    mouth_y = (mouths[0][1] + mouths[0][3]) / 2 if mouths else y0 + 0.22 * (y1 - y0)
+    eye_y = min(b[1] for b in eyes) if eyes else y0 + 0.45 * (y1 - y0)  # her eyes' lower edge
+    peak = mouth_y + 0.3 * (eye_y - mouth_y)
+    low = y0 + 0.25 * (peak - y0)
+
+    def move(x, y):
+        out = ease(0.3, 0.8, abs(x - cx) / half)
+        high = ease(low, peak, y) if y < peak else 1 - ease(peak, eye_y, y)
+        far = PUFF * PUFF_TIMES[0] * 2 * half * out * high
+        return math.copysign(far, x - cx), -PUFF_DROP * far
+
+    moving = [face] + [(p, m) for p, m in fig.head if p.semantic_role is SemanticRole.blush]
+    rig.parameters.append(Parameter(id="ParamCheekPuff", min=0.0, max=1.0, default=0.0, keyforms=[
+        Keyform(value=0.0, mesh_offsets={p.id: author._zeros(m) for p, m in moving}),
+        Keyform(value=1.0, mesh_offsets={p.id: [move(x, y) for x, y in m.vertices] for p, m in moving})]))
+
+
+# Her pout mouth (parts.py mouth-pout): ParamMouthPout swaps it in for her closed mouth. It is one of
+# her lips for ParamMouthOpenY, so it gives way to her open mouth as her closed mouth does, and she
+# can talk through a sulk. A smile or frown (ParamMouthForm) leaves it as drawn.
+def pout(rig, fig):
+    shut = [p for p, _ in fig.drawn if LAYER_OF.get(p.id) == "mouth_close"]
+    pouts = [p for p, _ in fig.drawn if LAYER_OF.get(p.id) == "mouth_pout"]
+    if not pouts or by_id(rig, "ParamMouthPout") is not None:
+        return
+    form = by_id(rig, "ParamMouthForm")
+    for key in form.keyforms if form else []:
+        for p in pouts:
+            key.mesh_offsets.pop(p.id, None)
+    rig.parameters.append(Parameter(id="ParamMouthPout", min=0.0, max=1.0, default=0.0, keyforms=[
+        Keyform(value=0.0, opacity_overrides={**{p.id: 1.0 for p in shut}, **{p.id: 0.0 for p in pouts}}),
+        Keyform(value=1.0, opacity_overrides={**{p.id: 0.0 for p in shut}, **{p.id: 1.0 for p in pouts}})]))
+
+
 def lids(rig, fig):
     """Rewrite how each eye shuts (ParamEyeLOpen, ParamEyeROpen)."""
     drawn = lambda part, mesh: DRAWN.get(part.id) or box(mesh.vertices)
@@ -814,6 +870,8 @@ def pose_rig(rig, fig):
         masks.update({p.id: face.id for p, _ in fig.head if p.semantic_role is SemanticRole.blush})
     lids(rig, fig)
     mouth_shapes(rig, fig)
+    pout(rig, fig)
+    cheek_puff(rig, fig)
     print("head turn: " + "; ".join(turn_parts(rig, fig, reach)))
     arms = [arm for arm in (Arm(rig, fig, "L"), Arm(rig, fig, "R")) if arm.ok]
     legs = [leg for leg in (Leg(rig, fig, "L"), Leg(rig, fig, "R")) if leg.ok]
@@ -1087,7 +1145,7 @@ def i2l_tool(name):
 # lighter than those are touched: a dark outline, and a highlight further in, stay as drawn.
 # Her face's fine parts are left out: a mouth or a brow is a thin line with no inside, and the clean
 # recoloured a faint mouth line from its darker corners.
-FINE = {"mouth", "mouth_close", "mouth_open", "mouth_oh", "nose", "eyebrow", "eyelash", "eyewhite", "irides", "eye_close",
+FINE = {"mouth", "mouth_close", "mouth_open", "mouth_oh", "mouth_pout", "nose", "eyebrow", "eyelash", "eyewhite", "irides", "eye_close",
         "blush", "eyewear", "earwear"}
 RIM = 3          # how far in from her edge a pixel still counts as on her rim, in her frame's pixels
 RIM_PALE = 0.08  # ...and how much lighter than the inside beside it (0 to 1) makes it a pale one
@@ -1153,6 +1211,7 @@ def settings(name):
       layer is none of those.
     - rims: false leaves pale edge pixels as they are (see clean_rim), for a character drawn with
       a light outline of her own.
+    - cheek_puff: how far her cheeks puff out next to the kit's own (see cheek_puff), from 0 to 2.
     - tucked: {"topwear": "bottomwear"} for a top tucked into a skirt. The layers stop where they
       meet, so when either moves a gap opens between them (first user, 2026-11-10: "extending a
       little bit of shirt and ensuring its behind the skirt would stop the gap"). The first layer
@@ -1217,6 +1276,7 @@ def write_layers(name):
     shutil.rmtree(dst, ignore_errors=True)
     os.makedirs(dst)
     images, copies, sharp, changed = {}, {}, [], []
+    PUFF_TIMES[0] = min(2.0, max(0.0, float(settings(name).get("cheek_puff", 1.0))))
     rims = settings(name).get("rims", True)  # "rims": false in her live2d.json leaves her edges as they are
     if os.path.exists(os.path.join(src, "sharp.json")):  # her head's layers at the head pass's own size
         with open(os.path.join(src, "sharp.json"), encoding="utf-8") as f:

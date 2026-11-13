@@ -45,6 +45,16 @@ drawing and layers (see layers.py for the layers themselves).
       --back puts her drawn mouth back. Her drawn mouth is kept beside her layers.json
       (mouth-close-drawn.png) the first time, so each redraw starts from it. Run `mouth` again
       after it: the open mouth is fitted to the closed one
+  mouth-pout <name> [--style <number>] [--size <times>] [--thick <times>] [--down <share>] [--right <share>] [--try]
+      her pout mouth (mouth_pout): a small closed mouth for a sulk, drawn where her own closed mouth
+      is, in its colour, tilted as her face is. The rig swaps it in for her closed mouth with
+      ParamMouthPout, which her pouting expression sets along with her puffed cheeks
+      (ParamCheekPuff); she can still talk through it. Styles: 1 a peak (a short upside-down V), 2 a
+      wavy line, 3 a "3" (pursed lips). --try draws all of them on her face as
+      <out>/parts/<name>-pouts.png and changes nothing. --size and --thick are its size and its
+      line's thickness, --down and --right move it, in shares of her face's width; what you give is
+      kept in layers.json. Without one, her pouting expression uses her own closed mouth, turned
+      down. `layers remove <name> mouth_pout "why"` takes it away
   mouth-sheet [<name>] [--size <times>] [--down <share>] [--right <share>]
               [--turn <degrees>]
       the kit's open mouths, numbered: with a name, each one on her own face, in her colours, as
@@ -797,6 +807,92 @@ def do_mouth_line(name, given=None, trying=False, back=False):
           + (", and its sharp copy" if where else "") + ". Run `parts mouth` again to fit her open mouth to it")
 
 
+# ---- Her pout mouth ------------------------------------------------------------------------------
+
+POUT_KEY = "pout_mouth"  # layers.json: her pout mouth, {"style", "size", "down", "right", "thick"}
+POUT_PLAIN = {"size": 1.0, "down": 0.0, "right": 0.0, "thick": 1.0}
+POUT_W = 0.055           # a pout mouth is this share of her face's width across
+POUT_STYLES = {1: "peak", 2: "wavy", 3: "three"}
+
+
+def pout_stroke(style, wide):
+    """A pout's stroke about its middle, in pixels with y down, and how thick each point is (0 to 1)."""
+    u = np.linspace(-1, 1, 200)
+    if style == 1:    # a short line up to a soft peak a little left of the middle, then down: a sulk
+        top = -0.15
+        t = np.where(u < top, (u - top) / (1 + top), (u - top) / (1 - top))
+        pts = np.stack([u * wide / 2, 0.36 * wide * (np.abs(t) ** 1.5 - 0.5)], axis=1)
+    elif style == 2:  # a wave and a half: lips pressed together and wobbling
+        pts = np.stack([u * wide * 0.6, 0.11 * wide * np.sin(1.5 * np.pi * u)], axis=1)
+    elif style == 3:  # a "3": pursed lips, two bumps one over the other
+        pts = np.stack([0.30 * wide * (np.abs(np.sin(np.pi * u)) - 0.5), u * 0.40 * wide], axis=1)
+    else:
+        sys.exit(f"pout style {style}: there are " + ", ".join(f"{k} ({v})" for k, v in POUT_STYLES.items()))
+    return pts, 0.5 + 0.5 * np.cos(np.pi * u / 2) ** 0.6
+
+
+def do_mouth_pout(name, style=None, given=None, trying=False):
+    """Her pout mouth (mouth_pout): a small closed mouth drawn where her own is, in its colour, which
+    the rig swaps in for her closed mouth with ParamMouthPout (her pouting expression sets it)."""
+    info = L.load(name)
+    order = info["order"]
+    if "mouth_close" not in order:
+        sys.exit(f"{name}: run `parts mouth {name}` once first, so her own mouth is mouth_close")
+    had = info.get(POUT_KEY, {})
+    adjust = dict(POUT_PLAIN, **{k: v for k, v in had.items() if k in POUT_PLAIN})
+    adjust.update({k: float(v) for k, v in (given or {}).items() if v is not None})
+    if not (0.4 <= adjust["size"] <= 3 and 0.3 <= adjust["thick"] <= 4 and abs(adjust["down"]) <= 0.3 and abs(adjust["right"]) <= 0.3):
+        sys.exit("--size from 0.4 to 3, --thick from 0.3 to 4, --down and --right from -0.3 to 0.3 (shares of her face's width)")
+    style = style or had.get("style") or 1
+    keep = os.path.join(L.folder(name), LINE_KEEP + ".png")  # her drawn mouth, if her closed mouth was redrawn
+    drawn = np.asarray(Image.open(keep).convert("RGBA"), np.float32) / 255 if os.path.exists(keep) else L.read_part(name, "mouth_close")
+    mid, _, curve, own, colour, _ = line_of(drawn)
+    face = L.read_part(name, "face")[..., 3] > 0.5
+    fx = np.nonzero(face.any(axis=0))[0]
+    face_w = float(fx.max() - fx.min())
+    turn = face_turn(name, info)
+    at = np.array(moved((mid, float(curve(0))), adjust, face_w, turn))
+    t = np.radians(turn)
+    spin = np.array([[np.cos(t), np.sin(t)], [-np.sin(t), np.cos(t)]])  # her face's tilt, y down
+    thick = max(own, LINE_THICK * face_w) * adjust["thick"]
+    rgb = colour * 0.65 + LINE_DARK * 0.35
+
+    def part(n, shape, corner=(0.0, 0.0), per=1.0):
+        pts, thin = pout_stroke(n, POUT_W * face_w * adjust["size"])
+        return line_part(shape, at + pts @ spin, thick * thin, rgb, corner, per)
+
+    # The picture: every style on her face, her closed mouth out of the way.
+    x0, y0, x1, y1 = face_box(name, lower=True)
+    hidden = L.SHUT | {"mouth_close"}
+    base, _ = L.composite([(layer, L.read_part(name, layer)[y0:y1, x0:x1]) for layer in order if layer not in hidden])
+    on = lambda m: m[y0:y1, x0:x1, :3] * m[y0:y1, x0:x1, 3:4] + base * (1 - m[y0:y1, x0:x1, 3:4])
+    cells = [("her mouth", on(L.read_part(name, "mouth_close")))]
+    cells += [(f"{n}  {words}", on(part(n, drawn.shape[:2]))) for n, words in POUT_STYLES.items()]
+    sheet(cells, out_path(name, "pouts"), wide=420, cols=4)
+    if trying:
+        return print(f"{name}: tried only; her layers are as they were")
+
+    new = part(style, drawn.shape[:2])
+    L.write_part(name, "mouth_pout", new)
+    place(info, "mouth_pout", "mouth_close")
+    sharp = L.load_sharp(name)
+    where = sharp.get("mouth_close")
+    if where:  # as sharp as her closed mouth's copy is
+        per = where["per"][0]
+        ys, xs = np.nonzero(new[..., 3] > 0)
+        lo = np.array([xs.min() - 3, ys.min() - 3], float)
+        size = np.ceil((np.array([xs.max() + 4, ys.max() + 4]) - lo) / per).astype(int)
+        copy = part(style, (int(size[1]), int(size[0])), lo, per)
+        Image.fromarray(np.clip(copy * 255, 0, 255).round().astype(np.uint8), "RGBA").save(L.sharp_path(name, "mouth_pout"))
+        sharp["mouth_pout"] = {"at": [float(lo[0]), float(lo[1])], "per": [per, per]}
+        L.save_sharp(name, sharp)
+    info[POUT_KEY] = dict(adjust, style=style)
+    L.note(info, f"mouth_pout drawn: the kit's pout {style} ({POUT_STYLES[style]})" + "".join(f", {k} {adjust[k]:g}" for k in POUT_PLAIN if adjust[k] != POUT_PLAIN[k]))
+    L.save(name, info)
+    print(f"{name}: mouth_pout, the kit's pout {style} ({POUT_STYLES[style]})" + (", and its sharp copy" if where else "")
+          + f"; order {', '.join(order)}. Run `build` again")
+
+
 # ---- Her blush, and the sheets to choose from ----------------------------------------------------
 
 def her_eyes(name, info):
@@ -1225,6 +1321,14 @@ def main(args):
         except ValueError:
             sys.exit("--size, --thick and --dark take numbers, as 1.3")
         do_mouth_line(rest[0], given, o.get("try", False), o.get("back", False))
+    elif cmd == "mouth-pout" and rest:
+        o = options(rest[1:], ("style", "size", "thick", "down", "right"), ("try",))
+        try:
+            given = {k: float(o[k]) if k in o else None for k in ("size", "thick", "down", "right")}
+            style = int(o["style"]) if "style" in o else None
+        except ValueError:
+            sys.exit("--style takes a number, and --size, --thick, --down and --right numbers, as 1.3 or -0.01")
+        do_mouth_pout(rest[0], style, given, o.get("try", False))
     elif cmd == "mouth-sheet" and len(rest) <= 1:
         do_mouth_sheet(*rest)
     elif cmd == "mouth-sheet" and rest and not rest[0].startswith("--"):

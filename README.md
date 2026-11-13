@@ -449,6 +449,26 @@ click for it.
 
 After any of these, run `build` again and reload the viewer's page.
 
+### Her pout mouth, and puffed cheeks
+
+Every model can puff her cheeks out (`ParamCheekPuff`): her face's outline swells beside her
+mouth, her chin keeps its point, and her blush rides on the cheek. The `pouting` expression uses
+it, with her brows down a little and a flush. `"cheek_puff": 1.3` in her layers' `live2d.json`
+makes hers that many times as far (0 to 2).
+
+A pout mouth goes with it: a small closed mouth for a sulk.
+
+```
+python live2d.py parts mouth-pout akane --try
+python live2d.py parts mouth-pout akane --style 1
+```
+
+`--try` draws the three on her face (`<out>/parts/akane-full-pouts.png`) and changes nothing:
+1 a peak (a short upside-down V), 2 a wavy line, 3 a "3" (pursed lips). `--size`, `--thick`,
+`--down` and `--right` change its size, its line and its place, and are kept. The rig swaps it in
+for her closed mouth with `ParamMouthPout`, which `pouting` sets. She can still talk through it.
+A character with no pout mouth pouts with her own closed mouth, turned down.
+
 ## Her eyes, drawn again
 
 An upscaled drawing keeps an iris's shape but loses its depth: the gradient, the pupil, the rim,
@@ -613,7 +633,7 @@ Every model the kit builds has the same names, so an app's settings and prompts 
   her hair is wide): the locks beside her face apart from each other, one tail apart from the
   other. Her head's turn and tilt and her body's sway and lean all move them.
 - **Expressions,** held until another is set: `happy` (eyes shut in a "^" smile), `tired`,
-  `blushing`, `angry`, `scared`, `surprised`. Each character can have her own of any of them, and
+  `blushing`, `angry`, `pouting`, `scared`, `surprised`. Each character can have her own of any of them, and
   new ones: see [Her own expressions](#her-own-expressions).
 - **Emotion motions,** a few seconds each: `Happy`, `Sad`, `Angry`, `Awkward`, `Think`, `Surprise`,
   `Question`, `Curious`, and `Idle`. These are the motion group names AIRI plays for each emotion.
