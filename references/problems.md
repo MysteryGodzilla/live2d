@@ -55,7 +55,8 @@ comes back in a new form. Commands are `python <kit>/live2d.py ...`.
 | Half-shut eyes look see-through | Handled: lids close as solid shapes until nearly shut | Nothing |
 | Her eyes close into a black line that isn't hers | She has no drawn closed eyes | `parts closed-eyes <name>` |
 | Her irises look soft and flat: no clear pupil, rim or shine | The upscale keeps an iris's shape but not its detail | `parts eyes <name> --try`, then take a number. `--colour` for another eye colour, `--iris-only` for a new iris that keeps her lashes |
-| A redrawn eye has skin inside the iris, or a lash line that moved | The strength was too high: the redraw moved her eyes | A lower strength, or `--iris-only` at 0.8 or less. `parts eyes <name> --back` puts her own back |
+| A redrawn eye has skin inside the iris, or a lash line that moved | The strength was too high for a whole-eye redraw: it drew her eyes anew, moved | A lower strength, or `--iris-only`, which cuts the iris out of the redraw and fits it onto hers. `parts eyes <name> --back` puts her own back |
+| `--iris-only` keeps her old iris for one eye ("an eye's iris wasn't found") | The redraw's iris isn't close enough to her iris's colour to be found | Give `--colour` (her iris and the prompt then agree), or another seed |
 | At half shut, a thin line stays above her lash | Her lash layer's upper edge (a crease or loose strokes) doesn't come down with the lid. Her own eyes have it too | Not fixed yet: lashes that bend as the eye shuts are planned. A redraw keeps only new lash strokes that join her lash line, so it adds none |
 | Her mouth hardly opens | A closed mouth is a line a few pixels high | `parts mouth <name>` draws an open one |
 | Her open mouth is plain, or the wrong kind for her | The default is one simple shape | `parts mouth-sheet <name>` shows the kit's on her face; `parts mouth <name> --style <number>`, or `--file` for a picture of your own |

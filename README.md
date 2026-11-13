@@ -479,8 +479,10 @@ python live2d.py build akane
   the drawn iris then start from it, and the colour's words go in the prompt in place of her
   look's.
 - **A fresh iris.** `--iris-only` takes only her iris from each redraw and keeps her own lashes and
-  eye whites, so a high strength can draw her a new iris without moving her lash line. It tries
-  0.6, 0.7 and 0.8: at 0.9 the redraw moves her eyes, and skin shows in her iris.
+  eye whites. A high strength draws her eyes anew, a little moved and resized, so each iris is cut
+  out of the redraw by its colour (pupil, shine and rim filled in), then moved and scaled until its
+  middle and width sit on her own iris. It tries 0.6, 0.75 and 0.9; 0.9 and 1 give the most
+  detail.
 
 `parts eyes akane <number>` takes one. Her eye white, iris and lash layers keep their shapes and
 take its colours, and her lashes take its line where it joins hers. They become sharp copies at

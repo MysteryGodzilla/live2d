@@ -31,7 +31,7 @@ WIDE = 1344        # the redraw is about this wide: what Qwen Image draws well, 
 ROOM = (0.12, 0.6, 0.25)  # the cut round her eyes: this share of their width each side, of their height above and below
 KEEP = 2           # her texture keeps the redraw shrunk this many times: still about 3 times the head pass's sharpness
 STRENGTHS = (0.35, 0.5, 0.65)  # --try's redraws when none are given: from a light touch to a new drawing of her eyes
-FRESH = (0.6, 0.7, 0.8)  # ...and with --iris-only, where only her iris is taken, so it can be drawn anew
+FRESH = (0.6, 0.75, 0.9)  # ...and with --iris-only, where her iris is cut out of the redraw and fitted to hers
 # Colour names Pillow doesn't know, that eyes are often given (Pillow knows the CSS ones: gold, teal, violet...).
 GEMS = {"gold": "#e0a020", "amber": "#ffb000", "emerald": "#2fbf71", "sapphire": "#1f5fd0", "ruby": "#d0104c", "amethyst": "#9a5cd0",
         "golden": "#f2b632", "hazel": "#9a7b3c", "scarlet": "#ff2a10", "jade": "#30a878", "rose": "#f06c9b"}
@@ -195,7 +195,7 @@ def new_layers(stack, picture, k, iris_only=False):
     names = dict(stack)
     out = {}
     if iris_only:
-        return {"irides": np.dstack([take_colour(stack, "irides", picture), UNCLIPPED["irides"]])} if "irides" in names else {}
+        return {"irides": np.dstack([fitted_iris(stack, picture), UNCLIPPED["irides"]])} if "irides" in names else {}
     if "eyelash" in names:
         a = lash_alpha(stack, picture, k)
         out["eyelash"] = np.dstack([take_colour(stack, "eyelash", picture, a), a])
@@ -204,6 +204,76 @@ def new_layers(stack, picture, k, iris_only=False):
             own = layer_alpha(stack, layer)
             out[layer] = np.dstack([take_colour(stack, layer, picture), own])
     return out
+
+
+def chroma(rgb):
+    """Colour without lightness: red against green, and yellow against blue."""
+    return np.stack([rgb[..., 0] - rgb[..., 1], (rgb[..., 0] + rgb[..., 1]) / 2 - rgb[..., 2]], -1)
+
+
+def widest_row(mask):
+    """An iris's middle: the rows where it is widest (the lids cut its top and bottom, not its middle)."""
+    widths = mask.sum(axis=1).astype(np.float32)
+    rows = np.nonzero(widths >= 0.95 * widths.max())[0]
+    return float(rows.mean())
+
+
+def iris_in(picture, near, ref, skin_light):
+    """The iris the redraw drew near one of her eyes, as a mask: what has her iris's colour (and is
+    darker than skin), closed up, with its pupil, highlights and dark rim filled in."""
+    c = chroma(picture)
+    lit = light(picture)
+    like = (np.linalg.norm(c - ref, axis=-1) < 0.5 * np.linalg.norm(ref) + 0.06) & (lit < skin_light - 0.05) & near
+    like = ndimage.binary_closing(like, np.ones((3, 3)), iterations=2)
+    pieces, n = ndimage.label(like)
+    if not n:
+        return None
+    big = pieces == 1 + int(np.argmax(ndimage.sum(np.ones(like.shape), pieces, range(1, n + 1))))
+    ys, xs = np.nonzero(big)
+    reach = max(2, round(0.08 * (xs.max() - xs.min())))
+    big |= (lit < 0.3) & ndimage.binary_dilation(big, iterations=reach) & near  # its dark rim and top
+    return ndimage.binary_fill_holes(big)
+
+
+def fitted_iris(stack, picture):
+    """Her iris from a redraw that drew her eyes anew (a high strength), cut out as the split cuts a
+    layer: each eye's iris found in the redraw by its colour, then moved and scaled so its middle
+    and width land on her own iris, and painted into her iris layer. Where the redraw has no iris
+    over hers (its lid lower than hers), her own stays."""
+    iris = dict(stack)["irides"]
+    rgb = iris[..., :3].copy()
+    full = UNCLIPPED["irides"]
+    shown = iris[..., 3] > 0.5
+    face = flat(stack, "eyewhite") if "eyewhite" in dict(stack) else flat(stack, "irides")
+    H, W = full.shape
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    for eye in eye_pieces(full):
+        ys, xs = np.nonzero(eye & (full > 0.5))
+        if len(xs) < 20:
+            continue
+        ox0, ox1, oy0, oy1 = xs.min(), xs.max(), ys.min(), ys.max()
+        w, h = ox1 - ox0, oy1 - oy0
+        near = np.zeros(full.shape, bool)
+        near[max(0, int(oy0 - 0.5 * h)):int(oy1 + 0.5 * h), max(0, int(ox0 - 0.4 * w)):int(ox1 + 0.4 * w)] = True
+        own = rgb[eye & shown] if (eye & shown).sum() > 20 else rgb[eye]
+        ref = np.median(chroma(own), axis=0)
+        ring = ndimage.binary_dilation(near, iterations=4) & ~near
+        skin_light = float(np.median(light(face[ring]))) if ring.any() else 0.85
+        found = iris_in(picture, near, ref, skin_light)
+        if found is None or found.sum() < 0.2 * eye.sum():
+            print("   an eye's iris wasn't found in the redraw: hers is kept")
+            continue
+        fys, fxs = np.nonzero(found)
+        s = (ox1 - ox0) / max(fxs.max() - fxs.min(), 1)
+        ocx, ocy = (ox0 + ox1) / 2, widest_row(eye & (full > 0.5))
+        fcx, fcy = (fxs.min() + fxs.max()) / 2, widest_row(found)
+        # Each of her iris's pixels, back to where it is in the redraw.
+        sx, sy = fcx + (xx - ocx) / s, fcy + (yy - ocy) / s
+        taken = ndimage.map_coordinates(found.astype(np.float32), [sy, sx], order=1) > 0.5
+        new = np.dstack([ndimage.map_coordinates(picture[..., i], [sy, sx], order=1) for i in range(3)])
+        put = eye & taken
+        rgb[put] = new[put]
+    return rgb
 
 
 def layer_alpha(stack, layer):

@@ -683,12 +683,12 @@ function drawMain() {
     `<p class="muted">Optional. An upscaled iris loses its depth: Try redraws her eyes several times bigger with Qwen Image (ComfyUI and the graphics card), at each strength (0 keeps them as they are, 1 draws them anew), and draws her iris by code as well. Her seed is her drawing's own unless you change it. A colour (gold, teal, crimson, amber, #3a7bd5...; two with a comma for an eye each) tints her iris first and goes in the prompt. Iris only keeps her lashes and eye whites, so a high strength can give her a new iris. Click the one you like to take it; Put back gives her own eyes back. Build again after either.</p>` +
     `<div class="row"><label>Seed ${input("eye_seed", String(eyes.seed), 'size="10"')}</label>` +
     `<button type="button" id="randeyeseed" title="A new random seed">Random seed</button>` +
-    `<label>Strengths ${input("eye_strength", val("eye_iris", false) ? "0.6,0.7,0.8" : "0.35,0.5,0.65", 'size="16"')}</label>` +
+    `<label>Strengths ${input("eye_strength", val("eye_iris", false) ? "0.6,0.75,0.9" : "0.35,0.5,0.65", 'size="16"')}</label>` +
     `<label>Colour ${input("eye_colour", "", 'size="16" placeholder="her own"')}</label>` +
     `<label><input type="checkbox" data-k="eye_iris" data-redraw="1" ${val("eye_iris", false) ? "checked" : ""}> Iris only</label></div>` +
     (eyes.seed_known ? "" : `<p class="muted">Her drawing has no record of its seed, so it starts at 1.</p>`) +
     A(() => {
-      const args = { command: "eyes", mode: "try", seeds: val("eye_seed", String(eyes.seed)), strength: val("eye_strength", val("eye_iris", false) ? "0.6,0.7,0.8" : "0.35,0.5,0.65") };
+      const args = { command: "eyes", mode: "try", seeds: val("eye_seed", String(eyes.seed)), strength: val("eye_strength", val("eye_iris", false) ? "0.6,0.75,0.9" : "0.35,0.5,0.65") };
       if (val("eye_colour", "")) args.colour = val("eye_colour", "");
       if (val("eye_iris", false)) args.iris_only = true;
       return { step: "parts", name, args };

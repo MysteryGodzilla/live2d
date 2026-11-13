@@ -80,9 +80,9 @@ drawing and layers (see layers.py for the layers themselves).
       own), and the redraws and the drawn iris start from that, with its words in the prompt. A
       name (gold, teal, violet, crimson, amber, emerald, sapphire...) or #rrggbb; two with a comma
       between give each eye its own, the eye on the picture's left first. --iris-only takes only
-      her iris from each redraw, keeping her lashes and eye whites, so a high strength can draw a
-      new iris without moving her lash line (strengths 0.6, 0.7 and 0.8 unless given: at 0.9 the redraw
-      moves her eyes, and skin shows in her iris)
+      her iris from each redraw, keeping her lashes and eye whites: each iris is cut out of the
+      redraw by its colour and fitted onto hers, so a high strength can give her a new, detailed
+      iris (strengths 0.6, 0.75 and 0.9 unless given)
   grin <name> [--no-tongue]
       for a character drawn with her mouth open (a grin): her drawn mouth is kept as
       layers/mouth-drawn.png and is mouth_close until w-mouth draws one; mouth_open is that mouth
