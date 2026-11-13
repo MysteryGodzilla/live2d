@@ -90,6 +90,7 @@ summary { cursor: pointer; font-weight: 600; }
 #lens span { position: absolute; left: 0; bottom: 0; font: 12px system-ui, sans-serif; color: #fff; background: rgba(0, 0, 0, .6); padding: 1px 6px; border-top-right-radius: 6px; }
 @media (hover: none) { .zoomhint .hover { display: none; } }
 .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }
+.opts.big { grid-template-columns: repeat(auto-fill, minmax(min(460px, 100%), 1fr)); }
 .slides { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 8px 0 2px; }
 .slides label { display: flex; align-items: center; gap: 6px; }
 .slides input[type=range] { width: 130px; accent-color: var(--accent); }
@@ -693,10 +694,12 @@ function drawMain() {
       if (val("eye_iris", false)) args.iris_only = true;
       return { step: "parts", name, args };
     }, "Try", { gpu: true }) +
-    (eyes.tiles.length ? `<div class="opts">` + (eyes.now_url ? `<button type="button" class="opt" disabled title="Her eyes as they are"><img loading="lazy" src="${esc(eyes.now_url)}" alt="Her eyes now"><span>now</span></button>` : "") +
+    (eyes.tiles.length ? `<div class="opts big">` + (eyes.now_url ? `<button type="button" class="opt" disabled title="Her eyes as they are"><img loading="lazy" src="${esc(eyes.now_url)}" alt="Her eyes now"><span>now</span></button>` : "") +
       eyes.tiles.map((t) => `<button type="button" class="opt${t.n === +val("eyes_style", 0) ? " sel" : ""}" data-kind="eyes" data-n="${t.n}" title="Eyes ${t.n}: ${esc(t.name)}">` +
         `<img loading="lazy" src="${esc(t.url)}" alt="Eyes ${t.n}, ${esc(t.name)}"><span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>` +
       A(() => ({ step: "parts", name, args: { command: "eyes", mode: "take", number: String(val("eyes_style", eyes.tiles[0].n)) } }), "Take these eyes") : "") +
+    (eyes.tiles.length ? `<p class="muted">Each Try adds its eyes to these, numbered on. Clear starts afresh.</p>` +
+      A(() => ({ step: "parts", name, args: { command: "eyes", mode: "clear" } }), "Clear the candidates") : "") +
     (eyes.redrawn ? A(() => ({ step: "parts", name, args: { command: "eyes", mode: "back" } }), "Put her own eyes back") : "") +
     `<h3>Her closed mouth</h3>` +
     `<p class="muted">Only if her drawn closed mouth is too thin or faint to see from afar: it is drawn again as a firm line along its own curve. Try shows her drawn mouth beside the new one and changes nothing. Draw her open mouth again after redrawing this one, so it fits.</p>` +

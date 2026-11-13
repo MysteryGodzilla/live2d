@@ -186,7 +186,9 @@ def build_command(req):
             if mode == "back":
                 return ["parts", "eyes", name, "--back"], False
             if mode == "take":
-                return ["parts", "eyes", name, str(number(args, "number", "Eyes", 1, 99, whole=True))], False
+                return ["parts", "eyes", name, str(number(args, "number", "Eyes", 1, 9999, whole=True))], False
+            if mode == "clear":
+                return ["parts", "eyes", name, "--clear"], False
             if mode != "try":
                 raise Refuse("Eyes: try, take or back")
             out = ["parts", "eyes", name, "--try"]
@@ -440,7 +442,7 @@ def eyes_state(name):
     tiles, folder = [], kit.out("parts", f"{slug}-eyes")
     if os.path.isdir(folder):
         for f in sorted(os.listdir(folder)):
-            m = re.fullmatch(r"([0-9]{1,2})-[^/\\]+\.png", f)
+            m = re.fullmatch(r"([0-9]{1,4})-[^/\\]+\.png", f)
             if m and m.group(1) in labels:
                 url = fresh(f"/files/out/parts/{slug}-eyes/{quote(f)}", os.path.join(folder, f))
                 tiles.append({"n": int(m.group(1)), "name": labels[m.group(1)].split(None, 1)[-1], "url": url})

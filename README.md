@@ -462,7 +462,9 @@ python live2d.py comfy stop
 python live2d.py build akane
 ```
 
-`--try` makes `<out>/parts/akane-full-eyes.png`: her eyes now, then each candidate, numbered.
+`--try` makes `<out>/parts/akane-full-eyes.png`: her eyes now, then each candidate, numbered. Each
+`--try` adds its candidates to the ones before, numbered on, so a number always means the same
+eyes (the oldest go past 24, and one already made isn't made again); `--clear` starts afresh.
 
 - **Redrawn.** Both her eyes, as the model shows them, are cut out together (so they stay alike),
   made about five times bigger and drawn over by Qwen Image on ComfyUI. The strength says how much

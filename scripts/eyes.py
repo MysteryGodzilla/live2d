@@ -37,6 +37,7 @@ GEMS = {"gold": "#e0a020", "amber": "#ffb000", "emerald": "#2fbf71", "sapphire":
         "golden": "#f2b632", "hazel": "#9a7b3c", "scarlet": "#ff2a10", "jade": "#30a878", "rose": "#f06c9b"}
 FALLBACK_SEED = 1  # a drawing with no record of its seed (base.json) is redrawn with this one
 KEPT = "eyes-drawn"  # her eyes as they were, kept beside her layers.json
+KEEP_TRIES = 24    # each --try adds its candidates to the ones before (numbers stay); the oldest go past this many
 PROMPT = ("Extreme close-up of the eyes of an anime girl, clean cel-shaded anime illustration, crisp fine line art. "
           "{eyes}Beautiful detailed glossy anime eyes: irises with depth, darker under the upper lid and lighter "
           "toward the bottom, a dark pupil, a thin dark rim, a soft glow in the lower iris and bright white "
@@ -499,6 +500,25 @@ def picture_of(stack, layers):
 
 
 def do_try(name, seeds=None, strengths=None, colour=None, iris_only=False):
+    """One try at a time for each character: two at once would number their candidates alike."""
+    os.makedirs(tries_folder(name), exist_ok=True)
+    lock = os.path.join(tries_folder(name), "trying.lock")
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        import time
+        if time.time() - os.path.getmtime(lock) < 1800:
+            sys.exit(f"{name}: another try for her eyes is running; wait for it (or, if none is, delete {lock})")
+        os.remove(lock)  # left by a try that stopped half an hour ago or more
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    os.close(fd)
+    try:
+        trying(name, seeds, strengths, colour, iris_only)
+    finally:
+        os.remove(lock)
+
+
+def trying(name, seeds, strengths, colour, iris_only):
     import parts as P
     info = L.load(name)
     box, k = cut_box(name, info)
@@ -511,8 +531,15 @@ def do_try(name, seeds=None, strengths=None, colour=None, iris_only=False):
                          for n, im in recoloured(stack, chosen)])
     now = flat(stack)
     folder = tries_folder(name)
-    shutil.rmtree(folder, ignore_errors=True)
-    os.makedirs(folder)
+    os.makedirs(folder, exist_ok=True)
+    labels_file = os.path.join(folder, "labels.json")
+    try:
+        with open(labels_file, encoding="utf-8") as f:
+            had = {int(n): label for n, label in json.load(f).items()}
+    except (OSError, ValueError):
+        had = {}
+    had = {n: label for n, label in had.items() if os.path.isdir(os.path.join(folder, str(n)))}
+    made = {label.split(None, 1)[-1] for label in had.values()}  # what earlier tries made: the same again would be the same picture
     source = Image.fromarray((np.clip(now, 0, 1) * 255).round().astype(np.uint8), "RGB")
     source.save(os.path.join(folder, "source.png"))
     seed_note = None
@@ -524,9 +551,13 @@ def do_try(name, seeds=None, strengths=None, colour=None, iris_only=False):
         prompt = prompt.replace("The same eyes, the same shape, lashes and skin as the picture.",
                                 "The same eye shape, lashes and skin as the picture, with new irises.")
     jobs, labels = [], []
+    how = (f", {colour}" if chosen else "") + (", iris only" if iris_only else "")
     for seed in seeds:
         for s in strengths or (FRESH if iris_only else STRENGTHS):
             label = f"seed {seed} at {s:g}"
+            if label + how in made:
+                print(f"{label + how}: made already, kept")
+                continue
             wf, extra = redraw_graph(source, prompt, seed, s)
             jobs.append((label, wf, extra))
             labels.append(label)
@@ -534,30 +565,60 @@ def do_try(name, seeds=None, strengths=None, colour=None, iris_only=False):
           + (f"; seed: {seed_note}" if seed_note else ""))
     print("prompt:", prompt)
     got = redraws(jobs)
-    cells, n = [("now", hers)], 0
-    if chosen:
+    n = max(had, default=0)
+
+    def add(what, layers, picture, redraw=None):
+        nonlocal n
         n += 1
-        layers = {"irides": np.dstack([dict(stack)["irides"][..., :3], UNCLIPPED["irides"]])}
         save_candidate(os.path.join(folder, str(n)), layers, box, k)
-        cells.append((f"{n}  tinted {colour}", now))
+        Image.fromarray((np.clip(picture, 0, 1) * 255).round().astype(np.uint8), "RGB").save(os.path.join(folder, str(n), "preview.png"))
+        if redraw is not None:
+            Image.fromarray((redraw * 255).round().astype(np.uint8), "RGB").save(os.path.join(folder, str(n), "redraw.png"))
+        had[n] = f"{n}  {what}"
+
+    if chosen and f"tinted {colour}" not in made:
+        add(f"tinted {colour}", {"irides": np.dstack([dict(stack)["irides"][..., :3], UNCLIPPED["irides"]])}, now)
     for label in labels:
-        if label not in got:
-            continue
-        n += 1
-        layers = new_layers(stack, got[label], k, iris_only)
-        save_candidate(os.path.join(folder, str(n)), layers, box, k)
-        Image.fromarray((got[label] * 255).round().astype(np.uint8), "RGB").save(os.path.join(folder, str(n), "redraw.png"))
-        cells.append((f"{n}  {label}" + (f", {colour}" if chosen else "") + (", iris only" if iris_only else ""),
-                       picture_of(stack, layers)))
-    if "irides" in info["order"]:
-        n += 1
+        if label in got:
+            layers = new_layers(stack, got[label], k, iris_only)
+            add(label + how, layers, picture_of(stack, layers), got[label])
+    drawn = "drawn iris" + (f", {colour}" if chosen else "")
+    if "irides" in info["order"] and drawn not in made:
         layers = {"irides": np.dstack([drawn_iris(stack, k), UNCLIPPED["irides"]])}
-        save_candidate(os.path.join(folder, str(n)), layers, box, k)
-        cells.append((f"{n}  drawn iris", picture_of(stack, layers)))
-    with open(os.path.join(folder, "labels.json"), "w", encoding="utf-8") as f:
-        json.dump({c[0].split()[0]: c[0] for c in cells[1:]}, f)
+        add(drawn, layers, picture_of(stack, layers))
+    for old in sorted(had)[:-KEEP_TRIES]:  # the oldest go when there are too many to look at
+        shutil.rmtree(os.path.join(folder, str(old)), ignore_errors=True)
+        del had[old]
+    with open(labels_file, "w", encoding="utf-8") as f:
+        json.dump({str(i): had[i] for i in sorted(had)}, f)
+    cells = [("now", hers)]
+    for i in sorted(had):
+        preview = os.path.join(folder, str(i), "preview.png")
+        if not os.path.exists(preview):  # made by an older kit: drawn now, if its cut is this one
+            try:
+                with open(os.path.join(folder, str(i), "cut.json"), encoding="utf-8") as f:
+                    same = json.load(f)["box"] == list(box)
+            except (OSError, ValueError, KeyError):
+                same = False
+            if same:
+                layers = {os.path.splitext(f)[0]: straight(Image.open(os.path.join(folder, str(i), f)))
+                          for f in os.listdir(os.path.join(folder, str(i))) if os.path.splitext(f)[0] in EYES}
+                Image.fromarray((np.clip(picture_of(stack, layers), 0, 1) * 255).round().astype(np.uint8), "RGB").save(preview)
+        if os.path.exists(preview):
+            cells.append((had[i], np.asarray(Image.open(preview).convert("RGB"), np.float32) / 255))
     P.sheet(cells, P.out_path(name, "eyes"), wide=640, cols=2)
-    print(f"take one with `parts eyes {L.split(name)[0]} <number>`")
+    print(f"take one with `parts eyes {L.split(name)[0]} <number>`; `parts eyes {L.split(name)[0]} --clear` starts the candidates afresh")
+
+
+def do_clear(name):
+    """The candidates of every try gone, and their sheet."""
+    import parts as P
+    shutil.rmtree(tries_folder(name), ignore_errors=True)
+    sheet = P.out_path(name, "eyes")
+    shutil.rmtree(os.path.splitext(sheet)[0], ignore_errors=True)
+    if os.path.exists(sheet):
+        os.remove(sheet)
+    print(f"{name}: the eye candidates are cleared")
 
 
 def keep_hers(name, info):

@@ -67,9 +67,12 @@ drawing and layers (see layers.py for the layers themselves).
       name, on a plain drawn face as blushes/sheet.png beside this script. Each picture is also
       saved by itself, as the mouths are
   eyes <name> --try [--seeds <a,b>] [--strength <s,t>] [--colour <c[,c]>] [--iris-only]
-  eyes <name> <number>  |  eyes <name> --back
+  eyes <name> <number>  |  eyes <name> --back  |  eyes <name> --clear
       her eyes drawn again, sharper, to choose from (eyes.py says how). --try makes a sheet,
-      <out>/parts/<name>-eyes.png: her eyes now, then each redraw by Qwen Image on ComfyUI (her
+      <out>/parts/<name>-eyes.png: her eyes now, then each candidate so far. Each --try adds its
+      own to the ones before, numbered on (a number stays its candidate; the oldest go past 24,
+      and one already made isn't made again); --clear starts afresh. The candidates: each redraw
+      by Qwen Image on ComfyUI (her
       drawing's own seed, or the ones given; at strengths 0.35, 0.5 and 0.65, or the ones given: 0
       keeps them as they are, 1 draws them anew), then her iris drawn by code in her own colours (no
       graphics card). A redraw needs ComfyUI running (`live2d.py comfy start`) and the card. Then
@@ -1209,7 +1212,7 @@ def main(args):
         E.do_take(rest[0], int(rest[1]))
     elif cmd == "eyes" and rest:
         import eyes as E
-        o = options(rest[1:], ("seeds", "strength", "colour"), ("try", "back", "iris-only"))
+        o = options(rest[1:], ("seeds", "strength", "colour"), ("try", "back", "iris-only", "clear"))
         loose = [r for r in rest[1:] if not r.startswith("--") and r not in o.values()]
         try:
             seeds = [int(s) for s in o["seeds"].split(",")] if "seeds" in o else None
@@ -1218,6 +1221,8 @@ def main(args):
             sys.exit("--seeds takes whole numbers and --strength numbers from 0 to 1, each with commas between")
         if o.get("back"):
             E.do_back(rest[0])
+        elif o.get("clear"):
+            E.do_clear(rest[0])
         elif o.get("try"):
             E.do_try(rest[0], seeds, strengths, o.get("colour"), o.get("iris-only", False))
         else:
