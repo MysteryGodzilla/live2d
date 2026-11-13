@@ -480,8 +480,9 @@ python live2d.py build akane
   look's.
 - **A fresh iris.** `--iris-only` takes only her iris from each redraw and keeps her own lashes and
   eye whites. A high strength draws her eyes anew, a little moved and resized, so each iris is cut
-  out of the redraw by its colour (pupil, shine and rim filled in), then moved and scaled until its
-  middle and width sit on her own iris. It tries 0.6, 0.75 and 0.9; 0.9 and 1 give the most
+  out of the redraw by its colour (pupil, shine and rim filled in), then warped onto her own iris
+  row by row: its middle on hers, its bottom on hers, and each row stretched to her iris's width
+  there, so it takes her iris's shape and nothing of her old iris is left. It tries 0.6, 0.75 and 0.9; 0.9 and 1 give the most
   detail.
 
 `parts eyes akane <number>` takes one. Her eye white, iris and lash layers keep their shapes and

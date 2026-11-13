@@ -237,16 +237,14 @@ def iris_in(picture, near, ref, skin_light):
 
 def fitted_iris(stack, picture):
     """Her iris from a redraw that drew her eyes anew (a high strength), cut out as the split cuts a
-    layer: each eye's iris found in the redraw by its colour, then moved and scaled so its middle
-    and width land on her own iris, and painted into her iris layer. Where the redraw has no iris
-    over hers (its lid lower than hers), her own stays."""
+    layer: each eye's iris found in the redraw by its colour, then warped onto her own iris, row by
+    row (middle on middle, bottom on bottom, each row's edges on hers), and painted into her iris
+    layer. Nothing of her old iris is left inside it."""
     iris = dict(stack)["irides"]
     rgb = iris[..., :3].copy()
     full = UNCLIPPED["irides"]
     shown = iris[..., 3] > 0.5
     face = flat(stack, "eyewhite") if "eyewhite" in dict(stack) else flat(stack, "irides")
-    H, W = full.shape
-    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     for eye in eye_pieces(full):
         ys, xs = np.nonzero(eye & (full > 0.5))
         if len(xs) < 20:
@@ -263,16 +261,33 @@ def fitted_iris(stack, picture):
         if found is None or found.sum() < 0.2 * eye.sum():
             print("   an eye's iris wasn't found in the redraw: hers is kept")
             continue
+        mine = eye & (full > 0.5)
         fys, fxs = np.nonzero(found)
-        s = (ox1 - ox0) / max(fxs.max() - fxs.min(), 1)
-        ocx, ocy = (ox0 + ox1) / 2, widest_row(eye & (full > 0.5))
-        fcx, fcy = (fxs.min() + fxs.max()) / 2, widest_row(found)
-        # Each of her iris's pixels, back to where it is in the redraw.
-        sx, sy = fcx + (xx - ocx) / s, fcy + (yy - ocy) / s
-        taken = ndimage.map_coordinates(found.astype(np.float32), [sy, sx], order=1) > 0.5
-        new = np.dstack([ndimage.map_coordinates(picture[..., i], [sy, sx], order=1) for i in range(3)])
-        put = eye & taken
-        rgb[put] = new[put]
+        fy0, fy1 = fys.min(), fys.max()
+        ocy, fcy = widest_row(mine), widest_row(found)
+        # Rows: her middle on its middle, her bottom on its bottom, so its lower half is stretched
+        # to hers; above its lid, her rows take its top row (the shadow under a lid).
+        step = (fy1 - fcy) / (oy1 - ocy) if oy1 - ocy > 2 and fy1 - fcy > 2 else (fxs.max() - fxs.min()) / max(w, 1)
+        ys2, xs2 = np.nonzero(mine)
+        ty = np.clip(fcy + (ys2 - ocy) * step, fy0, fy1)
+        has = found.any(axis=1)
+        nearest = ndimage.distance_transform_edt(~has, return_indices=True)[1][0]  # each row's nearest row with iris
+        row = nearest[np.round(ty).astype(int)]
+        ty = np.where(has[np.round(ty).astype(int)], ty, row)
+        # Across: each of her rows from its left edge to its right takes that row of the redraw's
+        # iris from its left edge to its right, so the iris is stretched and skewed to her shape.
+        left = lambda m: m.argmax(axis=1)  # noqa: E731
+        right = lambda m: m.shape[1] - 1 - m[:, ::-1].argmax(axis=1)  # noqa: E731
+        ml, mr, fl, fr = left(mine), right(mine), left(found), right(found)
+        t = (xs2 - ml[ys2] + 0.5) / (mr[ys2] - ml[ys2] + 1)
+        tx = fl[row] - 0.5 + t * (fr[row] - fl[row] + 1)
+        for i in range(3):
+            rgb[ys2, xs2, i] = ndimage.map_coordinates(picture[..., i], [ty, tx], order=1)
+        # Her iris's soft edge takes its nearest new pixel.
+        edge = eye & ~mine
+        if edge.any():
+            iy, ix = ndimage.distance_transform_edt(~mine, return_indices=True)[1]
+            rgb[edge] = rgb[iy[edge], ix[edge]]
     return rgb
 
 
