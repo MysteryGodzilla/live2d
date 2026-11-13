@@ -280,8 +280,10 @@ python live2d.py parts mouth akane
 other mouths you can pick, how to use a mouth picture of your own, and the same for her blush.
 
 Her closed eyes also make her smile: with her eyes shut, `ParamEyeLSmile` and `ParamEyeRSmile`
-bend each closed eye's line into an anime "^". With her eyes open they only narrow them a little
-from below. The `happy` expression and the head pat shut her eyes for it.
+bend each closed eye's line into an anime "^". With her eyes open they only narrow them, from
+below. The `happy` expression, the `Smile` motion and the head pat shut her eyes for it, so moving
+the smile slider alone in the viewer shows the narrowing, not the "^": move her eyes' open sliders
+to 0 as well.
 
 Some drawings have a closed mouth so thin or faint that it can't be seen from afar, and a smile or
 frown (`ParamMouthForm`) hardly shows on it. `parts mouth-line` draws it again as a firmer line

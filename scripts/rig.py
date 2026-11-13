@@ -280,7 +280,7 @@ SQUINT = 0.2  # ParamEye?Open where her open eye is as shut as it gets before he
 # squashed iris colours under the lash line (first user, 2026-11-13: "the squeeze looks a bit weird
 # and shows the squished eyes underneath"). The expressions that smile shut her eyes for it.
 SMILE_BEND = 0.55  # how far the middle of her closed eye rises at a full smile, in eye heights
-SMILE_OPEN = 0.3   # how far an open eye narrows at a full smile, from below, in eye heights
+SMILE_OPEN = 0.5   # how far an open eye narrows at a full smile, from below, in eye heights
 # The tilt: 12 degrees at the most, about a point just under her jaw. image2live2d tilts her 20
 # degrees about the base of her neck, which swung her head half a head sideways, off her neck.
 TILT = 0.21  # radians at a full ParamAngleZ
@@ -1398,6 +1398,20 @@ TAPS = {
         "ParamCheek": [(0, 0), (0.7, 0), (1.0, 0.5), (1.4, 0.5), (1.7, 0)],
     },
 }
+# Our own Smile, in place of image2live2d's, which raised ParamEye?Smile with her eyes open: they
+# now only narrow then, and its smile peaked so briefly that eyes shut along with it stopped
+# half-way, a squashed slit (first user, 2026-11-13: "smile eye doesn't seem to display
+# correctly"). Her eyes shut quickly, as in a blink, into the "^", hold, and open.
+SMILES = {
+    "Smile": {
+        "ParamEyeLOpen": [(0, 1), (0.2, 0), (1.3, 0), (1.55, 1)],
+        "ParamEyeROpen": [(0, 1), (0.2, 0), (1.3, 0), (1.55, 1)],
+        "ParamEyeLSmile": [(0, 0), (0.15, 1), (1.35, 1), (1.6, 0)],
+        "ParamEyeRSmile": [(0, 0), (0.15, 1), (1.35, 1), (1.6, 0)],
+        "ParamMouthForm": [(0, 0), (0.3, 1), (1.3, 1), (1.7, 0)],
+        "ParamCheek": [(0, 0), (0.35, 0.4), (1.3, 0.4), (1.7, 0)],
+    },
+}
 RESTS_AT_ONE = ("ParamEyeLOpen", "ParamEyeROpen")  # every other parameter here rests at 0
 
 
@@ -1489,7 +1503,7 @@ def write_acting(model):
                 lanes[pid] = [(0, rest), (there, value), (back, value), (done, rest)]
         save(f"model.{name}.motion3.json", motion(lanes))
         motions[group] = [{"File": f"model.{name}.motion3.json"}]
-    for group, lanes in TAPS.items():
+    for group, lanes in {**TAPS, **SMILES}.items():
         save(f"model.{group.lower()}.motion3.json", motion({pid: keys for pid, keys in lanes.items() if pid in hers}))
         motions[group] = [{"File": f"model.{group.lower()}.motion3.json"}]
     for group, name in BORROWED.items():
