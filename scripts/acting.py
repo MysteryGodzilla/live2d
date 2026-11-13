@@ -59,10 +59,10 @@ EXPRESSIONS = {
               "ParamAngleY": -6, "ParamEyeBallY": 0.3, "ParamArmLA": 10, "ParamArmLB": -10, "ParamArmRA": 10,
               "ParamArmRB": -10},
     # A sulk: cheeks puffed out, her pout mouth if she has one (else her own, turned down), brows
-    # down a little and angled, a flush, her head tipped.
-    "pouting": {"ParamCheekPuff": 1, "ParamMouthPout": 1, "ParamMouthForm": -0.5, "ParamBrowLY": -0.35,
-                "ParamBrowRY": -0.35, "ParamBrowLForm": 0.6, "ParamBrowRForm": 0.6, "ParamCheek": 0.5,
-                "ParamEyeLOpen": times(0.9), "ParamEyeROpen": times(0.9), "ParamAngleZ": 5, "ParamAngleY": -4},
+    # down and angled as in a glare, lids lowered, a flush, her head tipped.
+    "pouting": {"ParamCheekPuff": 1, "ParamMouthPout": 1, "ParamMouthForm": -0.5, "ParamBrowLY": -0.5,
+                "ParamBrowRY": -0.5, "ParamBrowLForm": 0.9, "ParamBrowRForm": 0.9, "ParamCheek": 0.6,
+                "ParamEyeLOpen": times(0.8), "ParamEyeROpen": times(0.8), "ParamAngleZ": 5, "ParamAngleY": -4},
     # Small irises, brows up, mouth a little open (her "O" mouth if she has one), hands drawn up in
     # front of her.
     "scared": {"ParamEyeBallForm": -1, "ParamBrowLY": 0.9, "ParamBrowRY": 0.9, "ParamBrowLForm": -0.7,

@@ -748,11 +748,11 @@ function drawMain() {
       `<span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>` +
     A(() => ({ step: "parts", name, args: { command: "mouth-oh", style: String(chosen("oh")) } }), c.oh && c.oh.has ? "Draw her O mouth again" : "Draw her O mouth") +
     `<h3>Her pout mouth</h3>` +
-    `<p class="muted">Optional. A small closed mouth for a sulk, drawn where her own is: her pouting expression shows it, with her cheeks puffed out. Without one, that expression turns her own closed mouth down. Show draws the three on her face and changes nothing. Build again after drawing one.</p>` +
+    `<p class="muted">Optional. A small closed mouth for a sulk, drawn where her own is: her pouting expression shows it, with her cheeks puffed out. Without one, that expression turns her own closed mouth down. Show draws them all on her face and changes nothing. Build again after drawing one.</p>` +
     poutS.html +
-    `<div class="row"><label>Style ${select("pout_style", ["1 peak", "2 wavy", "3 three"], ["1 peak", "2 wavy", "3 three"][(pouts.style || 1) - 1] || "1 peak")}</label></div>` +
+    `<div class="row"><label>Style ${select("pout_style", ["1 peak", "2 wavy", "3 three", "4 pursed", "5 flat"], ["1 peak", "2 wavy", "3 three", "4 pursed", "5 flat"][(pouts.style || 1) - 1] || "1 peak")}</label></div>` +
     A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-pout", mode: "try" }, poutS.place()) }), "Show them on her face") +
-    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-pout", style: String(val("pout_style", ["1 peak", "2 wavy", "3 three"][(pouts.style || 1) - 1] || "1 peak")).slice(0, 1) }, poutS.place()) }), pouts.has ? "Draw her pout mouth again" : "Draw her pout mouth") +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-pout", style: String(val("pout_style", ["1 peak", "2 wavy", "3 three", "4 pursed", "5 flat"][(pouts.style || 1) - 1] || "1 peak")).slice(0, 1) }, poutS.place()) }), pouts.has ? "Draw her pout mouth again" : "Draw her pout mouth") +
     img(c.pictures.pouts, "The pout mouths on her face") +
     `<h3>Her blush</h3>` +
     blushS.html +

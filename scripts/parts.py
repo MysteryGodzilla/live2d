@@ -50,7 +50,8 @@ drawing and layers (see layers.py for the layers themselves).
       is, in its colour, tilted as her face is. The rig swaps it in for her closed mouth with
       ParamMouthPout, which her pouting expression sets along with her puffed cheeks
       (ParamCheekPuff); she can still talk through it. Styles: 1 a peak (a short upside-down V), 2 a
-      wavy line, 3 a "3" (pursed lips). --try draws all of them on her face as
+      wavy line, 3 a "3" (pursed lips), 4 pursed (two small arches), 5 flat (a line with a tick down
+      at each end). --try draws all of them on her face as
       <out>/parts/<name>-pouts.png and changes nothing. --size and --thick are its size and its
       line's thickness, --down and --right move it, in shares of her face's width; what you give is
       kept in layers.json. Without one, her pouting expression uses her own closed mouth, turned
@@ -812,7 +813,7 @@ def do_mouth_line(name, given=None, trying=False, back=False):
 POUT_KEY = "pout_mouth"  # layers.json: her pout mouth, {"style", "size", "down", "right", "thick"}
 POUT_PLAIN = {"size": 1.0, "down": 0.0, "right": 0.0, "thick": 1.0}
 POUT_W = 0.055           # a pout mouth is this share of her face's width across
-POUT_STYLES = {1: "peak", 2: "wavy", 3: "three"}
+POUT_STYLES = {1: "peak", 2: "wavy", 3: "three", 4: "pursed", 5: "flat"}
 
 
 def pout_stroke(style, wide):
@@ -826,6 +827,14 @@ def pout_stroke(style, wide):
         pts = np.stack([u * wide * 0.6, 0.11 * wide * np.sin(1.5 * np.pi * u)], axis=1)
     elif style == 3:  # a "3": pursed lips, two bumps one over the other
         pts = np.stack([0.30 * wide * (np.abs(np.sin(np.pi * u)) - 0.5), u * 0.40 * wide], axis=1)
+    elif style == 4:  # two small arches side by side: lips pressed shut over a mouthful of air
+        pts = np.stack([u * wide * 0.42, -0.2 * wide * (np.abs(np.sin(np.pi * u)) ** 0.8 - 0.5)], axis=1)
+    elif style == 5:  # a flat line with a short tick down at each end, as a puffed-cheek mouth is often drawn
+        tick, flat = 0.26 * wide, wide * 0.5
+        d = (u + 1) / 2 * (2 * tick + 2 * flat)  # the way along: down-tick, the line, down-tick
+        x = np.clip(d - tick, 0, 2 * flat) - flat
+        y = np.where(d < tick, tick - d, np.where(d > tick + 2 * flat, d - tick - 2 * flat, 0.0)) - tick / 2
+        return np.stack([x, y], axis=1), np.full_like(u, 0.8)
     else:
         sys.exit(f"pout style {style}: there are " + ", ".join(f"{k} ({v})" for k, v in POUT_STYLES.items()))
     return pts, 0.5 + 0.5 * np.cos(np.pi * u / 2) ** 0.6
@@ -868,7 +877,7 @@ def do_mouth_pout(name, style=None, given=None, trying=False):
     on = lambda m: m[y0:y1, x0:x1, :3] * m[y0:y1, x0:x1, 3:4] + base * (1 - m[y0:y1, x0:x1, 3:4])
     cells = [("her mouth", on(L.read_part(name, "mouth_close")))]
     cells += [(f"{n}  {words}", on(part(n, drawn.shape[:2]))) for n, words in POUT_STYLES.items()]
-    sheet(cells, out_path(name, "pouts"), wide=420, cols=4)
+    sheet(cells, out_path(name, "pouts"), wide=420, cols=3)
     if trying:
         return print(f"{name}: tried only; her layers are as they were")
 

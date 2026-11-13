@@ -451,8 +451,9 @@ After any of these, run `build` again and reload the viewer's page.
 
 ### Her pout mouth, and puffed cheeks
 
-Every model can puff her cheeks out (`ParamCheekPuff`): her face's outline swells beside her
-mouth, her chin keeps its point, and her blush rides on the cheek. The `pouting` expression uses
+Every model can puff her cheeks out (`ParamCheekPuff`): the lower half of her face's outline
+swells, from beside her mouth down to her chin, so the line from cheek to chin becomes a full
+curve. Her chin keeps its point, and her blush rides on the cheek. The `pouting` expression uses
 it, with her brows down a little and a flush. `"cheek_puff": 1.3` in her layers' `live2d.json`
 makes hers that many times as far (0 to 2).
 
@@ -463,8 +464,9 @@ python live2d.py parts mouth-pout akane --try
 python live2d.py parts mouth-pout akane --style 1
 ```
 
-`--try` draws the three on her face (`<out>/parts/akane-full-pouts.png`) and changes nothing:
-1 a peak (a short upside-down V), 2 a wavy line, 3 a "3" (pursed lips). `--size`, `--thick`,
+`--try` draws them all on her face (`<out>/parts/akane-full-pouts.png`) and changes nothing:
+1 a peak (a short upside-down V), 2 a wavy line, 3 a "3" (pursed lips), 4 pursed (two small
+arches), 5 flat (a line with a tick down at each end). `--size`, `--thick`,
 `--down` and `--right` change its size, its line and its place, and are kept. The rig swaps it in
 for her closed mouth with `ParamMouthPout`, which `pouting` sets. She can still talk through it.
 A character with no pout mouth pouts with her own closed mouth, turned down.

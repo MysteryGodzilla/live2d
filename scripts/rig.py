@@ -555,37 +555,52 @@ def mouth_shapes(rig, fig):
         Keyform(value=1.0, opacity_overrides={**{p.id: 0.0 for p in opened}, **{p.id: 1.0 for p in oh}})]))
 
 
-# Puffed cheeks (ParamCheekPuff), for a sulk: her face's outline swells outward and a little down
-# beside and below her mouth, as cheeks full of air do. A point moves by how far out from the middle
-# of her face it is (nothing in the middle third, so her mouth and nose stay put; all of it from
-# most of the way out, so her outline moves whole) and by its height (most a little above her
-# mouth, nothing along the lowest part of her jaw, so her chin keeps its point, or from her eyes
-# up). Her blush rides on the cheek. Her side hair doesn't move: a cheek swells under it.
+# Puffed cheeks (ParamCheekPuff), for a sulk, as they are drawn: the lower half of her face's
+# outline swells, from beside her mouth down to her chin, outward and (lower down) downward, so the
+# line from cheek to chin goes from a straight slope to a full curve and her chin's point gets
+# shallower but stays. A point moves by how far out it is from the middle of her face at its own
+# height (nothing in the middle third; all of it from most of the way out to her outline, which
+# FACE_SIDES has at each height, so her outline moves whole) and by its height (most at her mouth's
+# height, less toward her chin's point and nothing at it, nothing from just under her eyes up; twice
+# as far, with all of it reaching her chin, made a square jaw with a notch each side). Her blush
+# rides on the cheek. Her side hair doesn't move: a cheek swells under it.
 # "cheek_puff": 1.3 in her live2d.json makes hers that many times as far (0 to 2).
-PUFF = 0.05        # how far a cheek's outline goes out, in face widths
-PUFF_DROP = 0.3    # ...and down, as a share of that
+PUFF = 0.036       # how far a cheek's outline goes out at her mouth's height, in face widths
+PUFF_DROP = 0.25   # ...and down, as a share of that, at her mouth's height
+PUFF_LOW = 0.5     # ...and this much more of it down by her chin, where her outline faces down
 PUFF_TIMES = [1.0]  # her own amount, set when her layers are written
+FACE_SIDES = []    # her face's drawn outline: (height, its left edge, its right edge), in the rig's units
 
 
 def cheek_puff(rig, fig):
+    import numpy as np
     face = next(((p, m) for p, m in fig.head if p.semantic_role is SemanticRole.face_base), None)
     if face is None or by_id(rig, "ParamCheekPuff") is not None:
         return
     x0, y0, x1, y1 = DRAWN.get(face[0].id) or box(face[1].vertices)
-    cx, half = (x0 + x1) / 2, max((x1 - x0) / 2, 1e-6)
+    half = max((x1 - x0) / 2, 1e-6)
+    rows = sorted(FACE_SIDES) or [(y0, x0, x1), (y1, x0, x1)]
+    heights, lefts, rights = (np.array(c) for c in zip(*rows))
+    if len(rows) > 30:  # her drawn outline has small steps in it: the swell follows a smoothed one
+        pad, flat = 7, np.ones(15) / 15
+        lefts, rights = (np.convolve(np.pad(c, pad, mode="edge"), flat, mode="valid") for c in (lefts, rights))
     mouths = [DRAWN.get(p.id) or box(m.vertices) for p, m in fig.head if p.semantic_role is SemanticRole.mouth]
     eyes = [DRAWN.get(p.id) or box(m.vertices) for p, m in fig.head
             if p.semantic_role in (SemanticRole.eye_white_l, SemanticRole.eye_white_r, SemanticRole.eye_l, SemanticRole.eye_r)]
     mouth_y = (mouths[0][1] + mouths[0][3]) / 2 if mouths else y0 + 0.22 * (y1 - y0)
     eye_y = min(b[1] for b in eyes) if eyes else y0 + 0.45 * (y1 - y0)  # her eyes' lower edge
-    peak = mouth_y + 0.3 * (eye_y - mouth_y)
-    low = y0 + 0.25 * (peak - y0)
+    top = mouth_y + 0.8 * (eye_y - mouth_y)
 
     def move(x, y):
-        out = ease(0.3, 0.8, abs(x - cx) / half)
-        high = ease(low, peak, y) if y < peak else 1 - ease(peak, eye_y, y)
+        if not y0 < y < top:
+            return 0.0, 0.0
+        left, right = float(np.interp(y, heights, lefts)), float(np.interp(y, heights, rights))
+        mid = (left + right) / 2  # her face's middle at this height: her chin's own, on a face turned a little
+        out = ease(0.35, 0.85, abs(x - mid) / max((right - left) / 2, 0.15 * half))
+        t = (y - y0) / (mouth_y - y0)
+        high = (t * (2 - t) + ease(0, 1, t)) / 2 if y < mouth_y else 1 - ease(mouth_y, top, y)
         far = PUFF * PUFF_TIMES[0] * 2 * half * out * high
-        return math.copysign(far, x - cx), -PUFF_DROP * far
+        return math.copysign(far, x - mid), -(PUFF_DROP + PUFF_LOW * (1 - ease(y0, mouth_y, y))) * far
 
     moving = [face] + [(p, m) for p, m in fig.head if p.semantic_role is SemanticRole.blush]
     rig.parameters.append(Parameter(id="ParamCheekPuff", min=0.0, max=1.0, default=0.0, keyforms=[
@@ -1353,6 +1368,10 @@ def write_layers(name):
                 solid = np.array(part.getchannel("A").crop(inked)) >= 64
                 ys, xs = np.nonzero(solid)
                 low = ys >= solid.shape[0] - max(1, round(0.04 * solid.shape[0]))  # its lowest rows
+                if layer == "face" and out_role is SemanticRole.face_base:  # her outline at each height (see cheek_puff)
+                    FACE_SIDES[:] = [(1 - (inked[1] + y) / part.height, (inked[0] + int(row.argmax())) / part.width,
+                                      (inked[0] + len(row) - int(row[::-1].argmax())) / part.width)
+                                     for y, row in enumerate(solid) if row.any()][::max(1, solid.shape[0] // 240)]
                 MIDDLE[file[:-4]] = (((inked[0] + xs.mean()) / part.width, 1 - (inked[1] + ys.mean()) / part.height),
                                      ((inked[0] + xs[low].mean()) / part.width, 1 - inked[3] / part.height))
             part.save(os.path.join(dst, file))
