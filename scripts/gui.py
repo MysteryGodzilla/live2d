@@ -166,12 +166,12 @@ def build_command(req):
         sub = args.get("command")
         if sub == "closed-eyes":
             return ["parts", sub, name], False
-        if sub in ("mouth", "blush", "mouth-sheet", "blush-sheet", "mouth-line"):
+        if sub in ("mouth", "mouth-oh", "blush", "mouth-sheet", "blush-sheet", "mouth-line"):
             out = ["parts", sub, name]
-            if sub in ("mouth", "blush") and args.get("style") not in (None, ""):
+            if sub in ("mouth", "mouth-oh", "blush") and args.get("style") not in (None, ""):
                 out += ["--style", str(number(args, "style", "Style", 1, 99, whole=True))]
             # Size, place and tilt; each left out when it is what she has.
-            ranges = {"mouth": MOUTH_RANGES, "mouth-sheet": MOUTH_RANGES, "blush": BLUSH_RANGES,
+            ranges = {"mouth": MOUTH_RANGES, "mouth-oh": MOUTH_RANGES, "mouth-sheet": MOUTH_RANGES, "blush": BLUSH_RANGES,
                       "blush-sheet": BLUSH_RANGES, "mouth-line": LINE_RANGES}[sub]
             for key, low, high in ranges:
                 if args.get(key) not in (None, ""):
@@ -383,6 +383,22 @@ def kept(kind, name):
     return {k: float(have[k]) if isinstance(have.get(k), (int, float)) else v for k, v in plain.items()}
 
 
+def oh_state(name):
+    """Her "O" mouth (parts mouth-oh): whether she has one, and its kit style."""
+    try:
+        with open(os.path.join(live2d.paths(name)["layers"], "layers.json"), encoding="utf-8") as f:
+            info = json.load(f)
+    except (OSError, ValueError):
+        return {"has": False, "now": None}
+    now = None
+    for change in reversed(info.get("changes", [])):
+        m = re.search(r"mouth_oh from the kit's open mouth ([0-9]+)", change)
+        if m:
+            now = int(m.group(1))
+            break
+    return {"has": "mouth_oh" in info.get("order", []), "now": now}
+
+
 def line_state(name):
     """Her closed mouth: whether it was drawn again (parts mouth-line), how, and its picture."""
     folder = live2d.paths(name)["layers"]
@@ -425,7 +441,7 @@ def one_character(name):
     return {"name": name, "steps": [{"what": w, "done": done, "next": how} for w, done, how in d["steps"]], "next": d["next"],
             "layers": d["order"], "frame": d["frame"], "pictures": pictures(name), "head_psds": psds,
             "built": os.path.exists(d["paths"]["model"]), "model": name + "-full",
-            "mouths": choices("mouths", name), "blushes": choices("blushes", name), "line": line_state(name)}
+            "mouths": choices("mouths", name), "blushes": choices("blushes", name), "line": line_state(name), "oh": oh_state(name)}
 
 
 def rounds():

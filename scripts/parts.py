@@ -28,6 +28,12 @@ drawing and layers (see layers.py for the layers themselves).
       tilts it the other way), on top of her face's own tilt. They are kept in her
       layers.json, so the next mouth and the mouth sheet start from them; --size 1 --down 0
       --right 0 --turn 0 puts it back
+  mouth-oh <name> [--style <number> | --file <picture>] [--size ...] [--down ...] [--right ...] [--turn ...]
+      her "O" mouth (mouth_oh): a second open mouth, the kit's style 8 ("oh") unless given, fitted
+      and placed as `mouth` fits hers, with its own size and place kept. The rig swaps it in for
+      her open mouth with ParamMouthO, which her scared and surprised expressions set; her mouth
+      still opens and closes with ParamMouthOpenY, so she can talk with it. `layers remove <name>
+      mouth_oh "why"` takes it away
   mouth-line <name> [--size <times>] [--thick <times>] [--dark <share>] [--try | --back]
       her closed mouth (mouth_close) drawn again as a firm line along her drawn mouth's own curve,
       for a drawing whose closed mouth is so thin or faint that it can't be seen from afar and
@@ -499,9 +505,9 @@ MOUTH_KEY = "open_mouth"  # layers.json: her open mouth's size and place, {"size
 MOUTH_PLAIN = {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}
 
 
-def mouth_adjust(info, size=None, down=None, right=None, turn=None):
+def mouth_adjust(info, size=None, down=None, right=None, turn=None, key=None):
     """Her open mouth's size, place and tilt: what is given, else what she has (layers.json), else plain."""
-    kept = dict(MOUTH_PLAIN, **info.get(MOUTH_KEY, {}))
+    kept = dict(MOUTH_PLAIN, **info.get(key or MOUTH_KEY, {}))
     given = {"size": size, "down": down, "right": right, "turn": turn}
     out = {k: float(v if v is not None else kept[k]) for k, v in given.items()}
     if not 0.3 <= out["size"] <= 3:
@@ -545,7 +551,15 @@ def in_frame(frame, small, pin, at, turn=0.0):
     return part, (left, top, w, h)
 
 
-def do_mouth(name, style=None, file=None, width=None, flip=False, size=None, down=None, right=None, turn=None):
+OH_KEY = "oh_mouth"  # layers.json: her "O" mouth's size and place, as MOUTH_KEY's
+
+
+def do_mouth(name, style=None, file=None, width=None, flip=False, size=None, down=None, right=None, turn=None,
+             layer="mouth_open"):
+    """Her open mouth (mouth_open), or her "O" mouth (mouth_oh, style 8 unless given): the rig swaps
+    the second in for the first with ParamMouthO, which her scared and surprised expressions set."""
+    oh = layer == "mouth_oh"
+    key = OH_KEY if oh else MOUTH_KEY
     info = L.load(name)
     order = info["order"]
     if "mouth" in order:
@@ -554,27 +568,28 @@ def do_mouth(name, style=None, file=None, width=None, flip=False, size=None, dow
         order[order.index("mouth")] = "mouth_close"
         L.note(info, "mouth renamed mouth_close: her own small mouth, shown while it's shut")
     at, line, face_w = mouth_fit(name, info)
-    adjust = mouth_adjust(info, size, down, right, turn)
+    adjust = mouth_adjust(info, size, down, right, turn, key)
     if file:
         wide = (width or FILE_W) * face_w * adjust["size"]
         small, pin = file_mouth(file, wide, flip)
-        what = f"mouth_open from {os.path.basename(file)}, {wide:.0f} px wide"
+        what = f"{layer} from {os.path.basename(file)}, {wide:.0f} px wide"
     else:
-        style = style or last_style(info, r"mouth_open from the kit's open mouth ([0-9]+)") or 1
+        style = style or last_style(info, layer + r" from the kit's open mouth ([0-9]+)") or (8 if oh else 1)
         unit =(width or MOUTH_W * MOUTH_STYLES.get(style, ("", 1.0))[1]) * face_w * adjust["size"]
         small, pin = styled_mouth(style, line, unit, flip)
-        what = (f"mouth_open from the kit's open mouth {style} ({style_name(style)}), {unit:.0f} px wide, line colour "
+        what = (f"{layer} from the kit's open mouth {style} ({style_name(style)}), {unit:.0f} px wide, line colour "
                 f"#{''.join(f'{round(v * 255):02x}' for v in line)}")
     face = face_turn(name, info)
     turn = face + adjust["turn"]  # her face's own tilt, and any asked for
     part, (left, top, w, h) = in_frame(info["frame"], small, pin, moved(at, adjust, face_w, face), turn)
-    L.write_part(name, "mouth_open", part)
-    place(info, "mouth_open", "mouth_close")
-    info[MOUTH_KEY] = adjust
+    L.write_part(name, layer, part)
+    place(info, layer, "mouth_open" if oh and "mouth_open" in order else "mouth_close")
+    info[key] = adjust
     L.note(info, what + (", mirrored" if flip else "") + adjust_words(adjust)
            + (f", turned {face:+.1f} degrees with her face" if abs(face) >= 0.5 else ""))
     L.save(name, info)
-    print(f"{name}: mouth_open {w}x{h} at {left},{top}; order {', '.join(order)}")
+    print(f"{name}: {layer} {w}x{h} at {left},{top}; order {', '.join(order)}"
+          + ("" if not oh or "mouth_open" in order else ". She has no open mouth yet: `parts mouth` too, or the rig won't use this"))
 
 
 # ---- Her closed mouth, drawn again ---------------------------------------------------------------
@@ -1146,6 +1161,12 @@ def main(args):
             sys.exit("give --style or --file, not both")
         do_mouth(rest[0], int(o["style"]) if "style" in o else None, o.get("file"),
                  float(o["width"]) if "width" in o else None, o.get("flip", False), *placing(o))
+    elif cmd == "mouth-oh" and rest:
+        o = options(rest[1:], ("style", "file", "width", "size", "down", "right", "turn"), ("flip",))
+        if "style" in o and "file" in o:
+            sys.exit("give --style or --file, not both")
+        do_mouth(rest[0], int(o["style"]) if "style" in o else None, o.get("file"),
+                 float(o["width"]) if "width" in o else None, o.get("flip", False), *placing(o), layer="mouth_oh")
     elif cmd == "mouth-line" and rest:
         o = options(rest[1:], ("size", "thick", "dark"), ("try", "back"))
         try:

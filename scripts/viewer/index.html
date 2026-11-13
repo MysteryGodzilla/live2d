@@ -33,7 +33,8 @@
                    border-radius: 6px; padding: 4px 8px; margin: 0 4px 4px 0; }
   button:hover { border-color: var(--dim); }
   label.slider { display: grid; grid-template-columns: 110px 1fr 44px; align-items: center; gap: 6px; font-size: 12px; }
-  #info { color: var(--dim); font-size: 12px; white-space: pre-wrap; }
+  #info, .say { color: var(--dim); font-size: 12px; white-space: pre-wrap; }
+  .say { margin-top: 4px; }
   #sheet-out { position: fixed; left: 0; top: 0; z-index: 10; max-width: none; }
   @media (max-width: 700px) { body { grid-template-columns: 1fr; grid-template-rows: 60vh auto; } }
 </style>
@@ -51,6 +52,14 @@
   <button id="sheet" title="Held poses, face and whole, saved to <out>/live2d/checks/<name>-sheet.png">Sheet</button>
   <h2>Expressions</h2>
   <div id="expressions"></div>
+  <div id="acting" hidden>
+    <h2>Change an expression</h2>
+    <select id="actname"></select><br>
+    <button id="actload" title="The sliders below take this expression, from rest">Load into the sliders</button>
+    <button id="actsave" title="What the sliders show, against rest, becomes her own of this expression">Save as hers</button>
+    <button id="actkit" title="Her own of this expression goes, and the kit's is used again">Back to the kit's</button>
+    <div id="actsay" class="say">Load one into the sliders, change them, and save it as hers. It is kept in her layers' live2d.json and her model is written again (her emotion motions follow).</div>
+  </div>
   <h2>Hold a pose</h2>
   <label><input type="checkbox" id="hold"> hold her at these (motions and physics stop)</label>
   <button id="rest">All to rest</button>
@@ -154,6 +163,7 @@ async function load(url) {
     input.oninput = () => { label.querySelector("output").textContent = (+input.value).toFixed(2); hold.checked = true; };
     sliders.append(label);
   });
+  loadActing(url);
   document.getElementById("info").textContent =
     `${ids.length} parameters, ${raw.drawables.count} drawables\n` +
     `${Object.keys(groups).length} motion groups, ${named.length} expressions`;
@@ -179,6 +189,86 @@ document.getElementById("talk").onclick = () => { hold.checked = false; view.tal
 document.getElementById("bg").onchange = (e) => { stage.className = e.target.value; };
 document.getElementById("framing").onchange = fit;
 new ResizeObserver(() => { if (app.resizeTo) fit(); }).observe(stage);
+
+// ---- Her own expressions ------------------------------------------------------------------------
+// The kit's expressions are the same for every character; this saves her own of one (or a new one)
+// from the sliders, into her layers' live2d.json, and the server writes her model's acting again.
+const NOT_FACE = /^Param(Hair|Skirt|Cloth|Acc|Bust|Breath)/;  // her physics and breath: not part of an expression
+const act = { slug: null, data: null };
+const actSay = (text) => { document.getElementById("actsay").textContent = text; };
+async function loadActing(url) {
+  const box = document.getElementById("acting"), sel = document.getElementById("actname");
+  act.slug = (url.match(/^\/live2d\/models\/([^/]+)\//) || [])[1] || null;
+  act.data = null;
+  box.hidden = !act.slug;
+  if (!act.slug) return;
+  const res = await fetch(`acting/${act.slug}`).catch(() => null);
+  if (!res || !res.ok) { sel.replaceChildren(); return actSay(res ? await res.text() : "This server doesn't save expressions."); }
+  act.data = await res.json();
+  const keep = sel.value;
+  const names = [...new Set([...Object.keys(act.data.kit), ...Object.keys(act.data.hers)])];
+  sel.replaceChildren(...names.map((n) => new Option(n + (act.data.hers[n] ? " (hers)" : ""), n)), new Option("a new one...", "+"));
+  if (names.includes(keep)) sel.value = keep;
+}
+document.getElementById("actload").onclick = () => {
+  const name = document.getElementById("actname").value;
+  if (!act.data || name === "+") return actSay("Pick one to load; for a new one, set the sliders and save.");
+  const p = act.data.hers[name] || act.data.kit[name] || {}, vals = {};
+  for (const input of sliders.querySelectorAll("input")) {
+    const v = p[input.name];
+    if (v === undefined) continue;
+    const rest = +input.dataset.rest;
+    vals[input.name] = typeof v === "object" ? rest * v.times : rest + v;
+  }
+  pose(vals);
+  actSay(`${name}, ${act.data.hers[name] ? "hers" : "the kit's"}, is in the sliders. Change them, then Save as hers.`);
+};
+async function actSend(name, p) {
+  actSay("Saving, and writing her model's expressions again...");
+  const res = await fetch(`acting/${act.slug}/${encodeURIComponent(name)}`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pose: p }) }).catch(() => null);
+  const text = res ? (await res.text()).trim() : "The server didn't answer.";
+  if (!res || !res.ok) return actSay(text);
+  await load(document.getElementById("who").value);  // her model again, with what was just written
+  await loadActing(document.getElementById("who").value);
+  document.getElementById("actname").value = name;
+  hold.checked = false;
+  // A newly loaded model drops an expression set before it has drawn: wait for a few of its updates
+  // (or a second and a half, as a page in the background draws nothing).
+  await new Promise((r) => {
+    let n = 0;
+    const internal = view.model.internalModel;
+    const f = () => { if (++n >= 3) done(); };
+    const done = () => { internal.off("beforeModelUpdate", f); clearTimeout(timer); r(); };
+    const timer = setTimeout(done, 1500);
+    internal.on("beforeModelUpdate", f);
+  });
+  await express(null);
+  await express(name);
+  actSay(text.split("\n")[0] + `\nShowing ${name}.`);
+}
+document.getElementById("actsave").onclick = async () => {
+  if (!act.data) return;
+  let name = document.getElementById("actname").value;
+  if (name === "+") {
+    name = (prompt("Its name (small letters, digits, - and _):") || "").trim().toLowerCase();
+    if (!name) return;
+  }
+  const p = {};
+  for (const input of sliders.querySelectorAll("input")) {
+    if (NOT_FACE.test(input.name)) continue;
+    const rest = +input.dataset.rest, v = +input.value;
+    if (Math.abs(v - rest) < 0.005) continue;
+    p[input.name] = act.data.rests_at_one.includes(input.name) && rest ? { times: +(v / rest).toFixed(3) } : +(v - rest).toFixed(3);
+  }
+  if (!Object.keys(p).length) return actSay("The sliders are all at rest: Load one into them, or move some, first.");
+  await actSend(name, p);
+};
+document.getElementById("actkit").onclick = async () => {
+  const name = document.getElementById("actname").value;
+  if (!act.data || name === "+" || !act.data.hers[name]) return actSay(`${name === "+" ? "That" : name} is the kit's already.`);
+  await actSend(name, null);
+};
 
 // ---- Check sheets -------------------------------------------------------------------------------
 const sheets = window.sheets = {

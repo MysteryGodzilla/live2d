@@ -619,7 +619,7 @@ function drawMain() {
 
   // 7. Closed eyes, mouth, blush
   // Each mouth or blush as a picture to click: her own face's once her sheet is made, else the kit's.
-  const chosen = (kind) => val(kind + "_style", (c[kind] && c[kind].now) || 1);
+  const chosen = (kind) => val(kind + "_style", (c[kind] && c[kind].now) || (kind === "oh" ? 8 : 1));
   const options = (kind, sheetCmd, what, extra) => {
     const o = c[kind] || { tiles: [] };
     const sel = +chosen(kind);
@@ -684,6 +684,12 @@ function drawMain() {
     `<p class="muted">Her mouth's size, place and tilt. "Show them on her face" draws every mouth with these, so you can see them before drawing one. Down and Right move it along her face as it is turned; a minus moves it up or left. Each mouth drawn keeps them, and the sliders start from them next time.</p>` +
     options("mouths", "mouth-sheet", "Mouth", mouthS.place) +
     A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth", style: String(chosen("mouths")) }, mouthS.place()) }), "Draw her mouth") +
+    `<h3>Her "O" mouth</h3>` +
+    `<p class="muted">A second open mouth, for a fright or a surprise: her scared and surprised expressions (and the Surprise motion) show it in place of her open mouth, and she can still talk with it. The kit's "oh" (8) unless you click another. Optional: without one, they use her open mouth.</p>` +
+    `<div class="opts">` + ((c.mouths && c.mouths.tiles) || []).map((t) => `<button type="button" class="opt${t.n === +chosen("oh") ? " sel" : ""}" data-kind="oh" data-n="${t.n}" title="O mouth ${t.n}: ${esc(t.name)}">` +
+      `<img loading="lazy" src="${esc(t.url)}" alt="Mouth ${t.n}, ${esc(t.name)}">` + (c.oh && c.oh.has && t.n === c.oh.now ? `<b class="now">she has this</b>` : "") +
+      `<span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>` +
+    A(() => ({ step: "parts", name, args: { command: "mouth-oh", style: String(chosen("oh")) } }), c.oh && c.oh.has ? "Draw her O mouth again" : "Draw her O mouth") +
     `<h3>Her blush</h3>` +
     blushS.html +
     `<p class="muted">Her blush's size and place. Closer moves the two marks toward her nose (a minus: apart), Down lowers them (a minus: raises them), and Tilt leans them, the outer ends lower (a minus: higher), mirrored so both lean the same way on her face. "Show them on her face" draws every blush with these.</p>` +
@@ -701,6 +707,7 @@ function drawMain() {
   // 9. Try her
   html.push(stepBox(9, "Try her", false, [],
     `<p>At rest she should look like her drawing. Move a slider to both ends and look for anything missing, doubled or torn. The README's list, "Trying her model", says what to check. After a new build, reload the viewer.</p>` +
+    `<p>To make an expression her own (a quieter smile for one, a bigger one for another), use the viewer's "Change an expression": load it into the sliders, change them, and save it as hers. Her model is written again at once, with no build.</p>` +
     (c.built ? `<div class="row"><a href="/live2d/?who=${encodeURIComponent(c.model)}" target="_blank" rel="noopener">Open the viewer in its own tab</a><button type="button" id="reloadviewer">Reload the viewer</button></div><div id="viewerbox"></div>`
       : `<p class="muted">Build her model first (step 8).</p>`),
     false));

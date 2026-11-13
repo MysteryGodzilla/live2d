@@ -53,6 +53,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import acting  # noqa: E402
 import blush as blush_marks  # noqa: E402
 import kit  # noqa: E402
 
@@ -78,6 +79,7 @@ ROLES = {
     "ears": SemanticRole.ear_l,
     "mouth_close": SemanticRole.mouth,
     "mouth_open": SemanticRole.mouth_cavity,
+    "mouth_oh": SemanticRole.mouth_cavity,  # her "O" mouth (see mouth_shapes)
 }
 # Opening her mouth, as her eyes shut (see SQUINT): her closed line stays solid while her drawn open
 # mouth starts as a slit hanging from its top edge, and the two swap over the first tenth of the
@@ -95,8 +97,8 @@ def mouth_swap(param_id, lips, cavity, open_fn):
     CAVITY[:] = cavity  # for mouth_form, which image2live2d calls next and gives the lips alone
     if not cavity:
         return _mouth_open(param_id, lips, cavity, open_fn)
-    top = max(y for _, m in cavity for _, y in m.vertices)  # the rig's y is up: her upper lip
-    hang = lambda m, share: author._collapse_to(m, 1 - share, top)
+    # Each open mouth (her "O" mouth too) hangs from its own top edge: the rig's y is up.
+    hang = lambda m, share: author._collapse_to(m, 1 - share, max(y for _, y in m.vertices))
     keys = []
     for value, shut, share in ((0.0, 1.0, SLIT / 2), (MOUTH_SWAP, 0.0, SLIT), (1.0, 0.0, 1.0)):
         keys.append(Keyform(value=value,
@@ -539,6 +541,19 @@ def look(rig, fig):
     return reach, masks
 
 
+# Her "O" mouth (parts.py mouth-oh), a second open mouth for a fright or a surprise: ParamMouthO
+# swaps it for her open mouth, and ParamMouthOpenY opens whichever is showing, so lip sync goes on
+# as it does. The expressions that want it (scared, surprised) set it; nothing else does.
+def mouth_shapes(rig, fig):
+    opened = [p for p, _ in fig.drawn if LAYER_OF.get(p.id) == "mouth_open"]
+    oh = [p for p, _ in fig.drawn if LAYER_OF.get(p.id) == "mouth_oh"]
+    if not opened or not oh or by_id(rig, "ParamMouthO") is not None:
+        return
+    rig.parameters.append(Parameter(id="ParamMouthO", min=0.0, max=1.0, default=0.0, keyforms=[
+        Keyform(value=0.0, opacity_overrides={**{p.id: 1.0 for p in opened}, **{p.id: 0.0 for p in oh}}),
+        Keyform(value=1.0, opacity_overrides={**{p.id: 0.0 for p in opened}, **{p.id: 1.0 for p in oh}})]))
+
+
 def lids(rig, fig):
     """Rewrite how each eye shuts (ParamEyeLOpen, ParamEyeROpen)."""
     drawn = lambda part, mesh: DRAWN.get(part.id) or box(mesh.vertices)
@@ -798,6 +813,7 @@ def pose_rig(rig, fig):
     if face:
         masks.update({p.id: face.id for p, _ in fig.head if p.semantic_role is SemanticRole.blush})
     lids(rig, fig)
+    mouth_shapes(rig, fig)
     print("head turn: " + "; ".join(turn_parts(rig, fig, reach)))
     arms = [arm for arm in (Arm(rig, fig, "L"), Arm(rig, fig, "R")) if arm.ok]
     legs = [leg for leg in (Leg(rig, fig, "L"), Leg(rig, fig, "R")) if leg.ok]
@@ -1071,7 +1087,7 @@ def i2l_tool(name):
 # lighter than those are touched: a dark outline, and a highlight further in, stay as drawn.
 # Her face's fine parts are left out: a mouth or a brow is a thin line with no inside, and the clean
 # recoloured a faint mouth line from its darker corners.
-FINE = {"mouth", "mouth_close", "mouth_open", "nose", "eyebrow", "eyelash", "eyewhite", "irides", "eye_close",
+FINE = {"mouth", "mouth_close", "mouth_open", "mouth_oh", "nose", "eyebrow", "eyelash", "eyewhite", "irides", "eye_close",
         "blush", "eyewear", "earwear"}
 RIM = 3          # how far in from her edge a pixel still counts as on her rim, in her frame's pixels
 RIM_PALE = 0.08  # ...and how much lighter than the inside beside it (0 to 1) makes it a pale one
@@ -1302,7 +1318,7 @@ def build(name):
     model = os.path.join(out, "model")
     shutil.rmtree(model, ignore_errors=True)
     i2l_tool("emit_cubism_bundle").emit_bundle(Path(layers), Path(model))
-    write_acting(model)
+    acting.write_acting(model, name)
     sway_hair(model)
 
     from image2live2d.backends.live2d.cmo3 import rig_to_cmo3
@@ -1312,127 +1328,8 @@ def build(name):
         f.write(rig_to_cmo3(rig, asset_root=Path(layers)))
     print(f"wrote {cmo3}")
 
-    archive = out + ".zip"
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
-        for folder, _, files in os.walk(model):
-            for file in files:
-                path = os.path.join(folder, file)
-                z.write(path, os.path.relpath(path, model))
+    archive = acting.zip_model(name)
     print(f"wrote {archive} ({os.path.getsize(archive) // 1024} KB)")
-
-
-# ---- Acting -----------------------------------------------------------------------------------
-# What she can show, under the same names for every character, so the agent's prompts and the
-# desktop app's wiring are written once. Three kinds, all files beside the model:
-# - expressions (expressions/<name>.exp3.json): a face and pose she holds until told otherwise. The
-#   agent app offers them to the model by name (<|ACT {"expression": {"name": "tired"}}|>).
-# - emotion motions: the agent app plays the motion group named for each emotion the model writes
-#   (AIRI, packages/stage-ui/src/constants/emotions.ts): Happy, Sad, Angry, Awkward, Think,
-#   Surprise, Question, Curious, and Idle. Ours ease into an expression, hold it and ease out; the
-#   rest borrow a motion image2live2d makes (Sad, Surprise and Idle are its own, under those names).
-# - taps: the agent app plays TapHead for a click or a stroke on her head and TapBody for one on
-#   her body (packages/stage-ui-live2d/src/composables/live2d/touch.ts). Live2D's sample mao_pro
-#   has big set pieces there; ours are small (first user's wish, 2026-11-10): a head pat she takes with an
-#   embarrassed smile, and a poke she flinches at and pouts about.
-# A value is added to the parameter; times(v) multiplies it (her eyes can still blink). A parameter
-# a character doesn't have is left out.
-def times(value):
-    return ("x", value)
-
-
-EXPRESSIONS = {
-    # Her eyes shut and smiling: the anime "^" (see SMILE_BEND).
-    "happy": {"ParamEyeLSmile": 1, "ParamEyeRSmile": 1, "ParamEyeLOpen": times(0), "ParamEyeROpen": times(0),
-              "ParamMouthForm": 1, "ParamMouthOpenY": 0.2,
-              "ParamBrowLY": 0.4, "ParamBrowRY": 0.4, "ParamCheek": 0.3, "ParamAngleZ": 5},
-    "tired": {"ParamEyeLOpen": times(0.55), "ParamEyeROpen": times(0.55), "ParamBrowLY": -0.4, "ParamBrowRY": -0.4,
-              "ParamBrowLForm": -0.6, "ParamBrowRForm": -0.6, "ParamMouthForm": -0.35, "ParamEyeBallY": -0.5,
-              "ParamAngleY": -14, "ParamAngleZ": -5, "ParamBodyAngleY": -6},
-    "blushing": {"ParamCheek": 1, "ParamMouthForm": 0.35, "ParamEyeBallX": 0.7, "ParamEyeBallY": -0.5,
-                 "ParamBrowLY": 0.15, "ParamBrowRY": 0.15, "ParamBrowLForm": -0.5, "ParamBrowRForm": -0.5,
-                 "ParamEyeLOpen": times(0.85), "ParamEyeROpen": times(0.85), "ParamAngleX": -8, "ParamAngleY": -6,
-                 "ParamAngleZ": 4},
-    # Cute anime angry: a pout with flushed cheeks, chin down, hands on her hips.
-    "angry": {"ParamBrowLY": -0.6, "ParamBrowRY": -0.6, "ParamBrowLForm": 1, "ParamBrowRForm": 1,
-              "ParamMouthForm": -0.8, "ParamCheek": 0.5, "ParamEyeLOpen": times(0.85), "ParamEyeROpen": times(0.85),
-              "ParamAngleY": -6, "ParamEyeBallY": 0.3, "ParamArmLA": 10, "ParamArmLB": -10, "ParamArmRA": 10,
-              "ParamArmRB": -10},
-    # Small irises, brows up, mouth a little open, hands drawn up in front of her.
-    "scared": {"ParamEyeBallForm": -1, "ParamBrowLY": 0.9, "ParamBrowRY": 0.9, "ParamBrowLForm": -0.7,
-               "ParamBrowRForm": -0.7, "ParamMouthOpenY": 0.3, "ParamMouthForm": -0.7, "ParamAngleY": 4,
-               "ParamArmLA": 4, "ParamArmLB": -9, "ParamArmRA": 4, "ParamArmRB": -9},
-}
-EMOTIONS = {"Happy": "happy", "Angry": "angry", "Awkward": "blushing"}  # group -> the expression it plays
-BORROWED = {"Think": "brow_form", "Question": "head_roll", "Curious": "look"}  # group -> image2live2d's motion
-EMOTION_TIMES = (0.35, 2.5, 3.2)  # seconds: there, starts back, back
-# Each parameter's keys as (seconds, value), eased between; every one starts and ends at rest.
-TAPS = {
-    "TapHead": {  # a pat: her head dips under the hand twice, eyes shut, blushing, a wavering smile
-        "ParamAngleY": [(0, 0), (0.25, -9), (0.55, -5), (0.85, -10), (1.15, -5), (1.45, -9), (1.9, -6), (2.5, 0)],
-        "ParamAngleZ": [(0, 0), (0.4, 4), (1.9, 3), (2.5, 0)],
-        "ParamBodyAngleY": [(0, 0), (0.3, -4), (0.6, -2), (0.9, -4), (1.2, -2), (2.4, 0)],
-        "ParamEyeLOpen": [(0, 1), (0.3, 0), (1.9, 0), (2.3, 1)],
-        "ParamEyeROpen": [(0, 1), (0.3, 0), (1.9, 0), (2.3, 1)],
-        "ParamEyeLSmile": [(0, 0), (0.3, 1), (1.9, 1), (2.3, 0)],  # shut as a "^"
-        "ParamEyeRSmile": [(0, 0), (0.3, 1), (1.9, 1), (2.3, 0)],
-        "ParamCheek": [(0, 0), (0.4, 1), (2.0, 1), (2.6, 0)],
-        "ParamMouthForm": [(0, 0), (0.35, 0.7), (0.9, 0.4), (1.3, 0.75), (1.8, 0.45), (2.5, 0)],
-        "ParamBrowLY": [(0, 0), (0.3, -0.3), (1.9, -0.3), (2.4, 0)],
-        "ParamBrowRY": [(0, 0), (0.3, -0.3), (1.9, -0.3), (2.4, 0)],
-        "ParamBrowLForm": [(0, 0), (0.3, -0.7), (1.9, -0.7), (2.4, 0)],
-        "ParamBrowRForm": [(0, 0), (0.3, -0.7), (1.9, -0.7), (2.4, 0)],
-    },
-    "TapBody": {  # a poke: she flinches with a start, then pouts about it
-        "ParamBodyAngleX": [(0, 0), (0.12, -7), (0.4, 3), (0.65, -1), (0.9, 0)],
-        "ParamBodyAngleZ": [(0, 0), (0.14, -4), (0.45, 1.5), (0.8, 0)],
-        "ParamAngleY": [(0, 0), (0.12, 8), (0.7, 0)],
-        "ParamArmLB": [(0, 0), (0.12, 3), (0.6, 0)],
-        "ParamArmRB": [(0, 0), (0.12, 3), (0.6, 0)],
-        "ParamBrowLY": [(0, 0), (0.1, 1), (0.5, 1), (0.9, -0.3), (1.4, -0.3), (1.7, 0)],
-        "ParamBrowRY": [(0, 0), (0.1, 1), (0.5, 1), (0.9, -0.3), (1.4, -0.3), (1.7, 0)],
-        "ParamEyeBallForm": [(0, 0), (0.1, -0.8), (0.45, -0.8), (0.9, 0)],
-        "ParamMouthOpenY": [(0, 0), (0.12, 0.6), (0.4, 0.5), (0.75, 0)],
-        "ParamMouthForm": [(0, 0), (0.7, 0), (0.95, -0.7), (1.4, -0.7), (1.7, 0)],
-        "ParamBrowLForm": [(0, 0), (0.7, 0), (0.95, 0.7), (1.4, 0.7), (1.7, 0)],
-        "ParamBrowRForm": [(0, 0), (0.7, 0), (0.95, 0.7), (1.4, 0.7), (1.7, 0)],
-        "ParamCheek": [(0, 0), (0.7, 0), (1.0, 0.5), (1.4, 0.5), (1.7, 0)],
-    },
-}
-# Our own Smile, in place of image2live2d's, which raised ParamEye?Smile with her eyes open: they
-# now only narrow then, and its smile peaked so briefly that eyes shut along with it stopped
-# half-way, a squashed slit (first user, 2026-11-13: "smile eye doesn't seem to display
-# correctly"). Her eyes shut quickly, as in a blink, into the "^", hold, and open.
-SMILES = {
-    "Smile": {
-        "ParamEyeLOpen": [(0, 1), (0.2, 0), (1.3, 0), (1.55, 1)],
-        "ParamEyeROpen": [(0, 1), (0.2, 0), (1.3, 0), (1.55, 1)],
-        "ParamEyeLSmile": [(0, 0), (0.15, 1), (1.35, 1), (1.6, 0)],
-        "ParamEyeRSmile": [(0, 0), (0.15, 1), (1.35, 1), (1.6, 0)],
-        "ParamMouthForm": [(0, 0), (0.3, 1), (1.3, 1), (1.7, 0)],
-        "ParamCheek": [(0, 0), (0.35, 0.4), (1.3, 0.4), (1.7, 0)],
-    },
-}
-RESTS_AT_ONE = ("ParamEyeLOpen", "ParamEyeROpen")  # every other parameter here rests at 0
-
-
-def motion(lanes):
-    """A .motion3.json from {parameter id: [(seconds, value), ...]}, eased between the keys the way
-    image2live2d's own motions are (flat-ended Bezier segments)."""
-    curves, segments, points = [], 0, 0
-    for param_id, keys in lanes.items():
-        line = [keys[0][0], keys[0][1]]
-        for (t0, v0), (t1, v1) in zip(keys, keys[1:]):
-            third = (t1 - t0) / 3
-            line += [1, round(t0 + third, 4), v0, round(t1 - third, 4), v1, t1, v1]
-        curves.append({"Target": "Parameter", "Id": param_id, "Segments": line})
-        segments += len(keys) - 1
-        points += 1 + 3 * (len(keys) - 1)
-    return {"Version": 3,
-            "Meta": {"Duration": max(keys[-1][0] for keys in lanes.values()), "Fps": 30.0, "Loop": False,
-                     "AreBeziersRestricted": True, "CurveCount": len(curves), "TotalSegmentCount": segments,
-                     "TotalPointCount": points, "UserDataCount": 0, "TotalUserDataSize": 0,
-                     "FadeInTime": 0.25, "FadeOutTime": 0.4},
-            "Curves": curves}
 
 
 # What her hair listens to. image2live2d swings each section from her head's turn and tilt alone,
@@ -1471,47 +1368,6 @@ def sway_hair(model):
     sections = sorted(o["Destination"]["Id"] for s in doc["PhysicsSettings"] for o in s["Output"]
                       if o["Destination"]["Id"].startswith("ParamHair") and not o["Destination"]["Id"].endswith("V"))
     print(f"hair: {len(sections)} sections that swing each by itself ({', '.join(sections)}); her body's sway moves them too")
-
-
-def write_acting(model):
-    """Add the expressions, emotion motions and taps to a built model."""
-    path = os.path.join(model, "model.model3.json")
-    with open(path, encoding="utf-8") as f:
-        doc = json.load(f)
-    with open(os.path.join(model, "model.cdi3.json"), encoding="utf-8") as f:
-        hers = {p["Id"] for p in json.load(f)["Parameters"]}
-    motions = doc["FileReferences"]["Motions"]
-    os.makedirs(os.path.join(model, "expressions"), exist_ok=True)
-
-    def save(file, content):
-        with open(os.path.join(model, file), "w", encoding="utf-8") as f:
-            json.dump(content, f, indent=1)
-
-    doc["FileReferences"]["Expressions"] = []
-    for name, pose in EXPRESSIONS.items():
-        save(f"expressions/{name}.exp3.json", {"Type": "Live2D Expression", "FadeInTime": 0.4, "FadeOutTime": 0.5, "Parameters": [
-            {"Id": pid, "Value": v[1] if isinstance(v, tuple) else v, "Blend": "Multiply" if isinstance(v, tuple) else "Add"}
-            for pid, v in pose.items() if pid in hers]})
-        doc["FileReferences"]["Expressions"].append({"Name": name, "File": f"expressions/{name}.exp3.json"})
-    there, back, done = EMOTION_TIMES
-    for group, name in EMOTIONS.items():
-        lanes = {}
-        for pid, v in EXPRESSIONS[name].items():
-            rest = 1.0 if pid in RESTS_AT_ONE else 0.0
-            value = rest * v[1] if isinstance(v, tuple) else rest + v
-            if pid in hers:
-                lanes[pid] = [(0, rest), (there, value), (back, value), (done, rest)]
-        save(f"model.{name}.motion3.json", motion(lanes))
-        motions[group] = [{"File": f"model.{name}.motion3.json"}]
-    for group, lanes in {**TAPS, **SMILES}.items():
-        save(f"model.{group.lower()}.motion3.json", motion({pid: keys for pid, keys in lanes.items() if pid in hers}))
-        motions[group] = [{"File": f"model.{group.lower()}.motion3.json"}]
-    for group, name in BORROWED.items():
-        file = f"model.{name}.motion3.json"
-        if group not in motions and os.path.exists(os.path.join(model, file)):
-            motions[group] = [{"File": file}]
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(doc, f, indent=2)
 
 
 COMMANDS = {"build": build}

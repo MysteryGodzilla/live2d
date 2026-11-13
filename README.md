@@ -24,6 +24,7 @@ project ([Another project](#another-project)). `SKILL.md` holds the same instruc
 - [Trying her model](#trying-her-model)
 - [What her model can do](#what-her-model-can-do)
 - [Changing how she moves](#changing-how-she-moves)
+- [Her own expressions](#her-own-expressions)
 - [Another project](#another-project)
 - [What is in this folder](#what-is-in-this-folder)
 - [Borrowed work and licences](#borrowed-work-and-licences)
@@ -431,6 +432,19 @@ above the blushes, as for her mouth.
 `parts blush` makes her blush a layer of her own, so you can also paint
 it yourself (`layers build`, then `layers pull`).
 
+**Her "O" mouth.** A second open mouth, for a fright or a surprise. Her `scared` and `surprised`
+expressions, and the `Surprise` motion, show it in place of her open mouth. It opens and closes as
+her mouth does, so she can still talk with it. Without one, they use her open mouth.
+
+```
+python live2d.py parts mouth-oh akane
+```
+
+It is the kit's style 8, "oh", unless you give `--style` or `--file`, and it takes `--size`,
+`--down`, `--right` and `--turn` as `parts mouth` does, kept apart from her open mouth's. In the
+model it is `ParamMouthO`: 0 her open mouth, 1 her "O" mouth. In the GUI, step 7 has the mouths to
+click for it.
+
 After any of these, run `build` again and reload the viewer's page.
 
 ## Fixing the layers
@@ -505,9 +519,13 @@ Every model the kit builds has the same names, so an app's settings and prompts 
   her hair is wide): the locks beside her face apart from each other, one tail apart from the
   other. Her head's turn and tilt and her body's sway and lean all move them.
 - **Expressions,** held until another is set: `happy` (eyes shut in a "^" smile), `tired`,
-  `blushing`, `angry`, `scared`.
+  `blushing`, `angry`, `scared`, `surprised`. Each character can have her own of any of them, and
+  new ones: see [Her own expressions](#her-own-expressions).
 - **Emotion motions,** a few seconds each: `Happy`, `Sad`, `Angry`, `Awkward`, `Think`, `Surprise`,
   `Question`, `Curious`, and `Idle`. These are the motion group names AIRI plays for each emotion.
+  `Happy`, `Angry`, `Awkward` and `Surprise` play her `happy`, `angry`, `blushing` and `surprised`.
+- **`ParamMouthO`,** if she has an "O" mouth (`parts mouth-oh`): 1 shows it in place of her open
+  mouth.
 - **Reactions to a click:** `TapHead` (a head pat: eyes shut in a "^", blushing, a wavering smile) and
   `TapBody` (a poke: a flinch, then a pout). AIRI plays these by name.
 
@@ -530,11 +548,47 @@ viewer.
 | How far knees bend, and how much a sway bends one | `KNEE_IN`, `KNEE_OUT`, `SWAY_KNEE` |
 | How many sections her hair swings in, and how much her body's sway moves it | `HAIR_SECTION`, `HAIR_SECTIONS`, `HAIR_FROM_BODY` |
 | Where her hips, knees and ankles are, if she is built differently | `HIPS`, `KNEE`, `ANKLE` |
-| An expression's face and pose | `EXPRESSIONS` |
-| The head pat and the poke | `TAPS` |
+| An expression's face and pose, for every character | `EXPRESSIONS` in `scripts/acting.py` |
+| The head pat, the poke and the smile | `TAPS`, `SMILES` in `scripts/acting.py` |
 
 These apply to every character. If one character needs something different, say so in her
-`live2d.json` and teach `rig.py` to read it, as `tucked` and `whole` are read.
+`live2d.json` and teach `rig.py` to read it, as `tucked` and `whole` are read. Her expressions
+are already hers to change, below.
+
+## Her own expressions
+
+The kit's expressions suit most characters, but not all: one may want a quiet closed-mouth smile
+for `happy`, another a big open one. Each character can have her own of any expression, and new
+ones, kept in her layers' `live2d.json`.
+
+In the viewer (or the GUI's last step), "Change an expression":
+
+1. Pick the expression and press **Load into the sliders**. Her sliders take it.
+2. Change the sliders: her mouth, her brows, her head, anything of her face and pose.
+3. Press **Save as hers**. It is saved, her model's expressions and motions are written again (about
+   a second, no build), and she shows it.
+
+**Back to the kit's** drops her own. "a new one..." in the list saves the sliders under a new name.
+Her hair, skirt, chest and breath are left out of an expression: physics moves those.
+
+By hand, in her layers' `live2d.json` (`<characters>/akane/layers/full/live2d.json`), each one there
+takes the place of the kit's of the same name. A value is added to the parameter at rest;
+`{"times": v}` multiplies it, for her eyes' open, so she can still blink:
+
+```json
+"expressions": {
+  "happy": {"ParamEyeLSmile": 1, "ParamEyeRSmile": 1, "ParamEyeLOpen": {"times": 0},
+            "ParamEyeROpen": {"times": 0}, "ParamMouthForm": 0.6, "ParamCheek": 0.3}
+}
+```
+
+Then write them into her model:
+
+```
+python live2d.py acting akane
+```
+
+`build` uses them too. The kit's own are `EXPRESSIONS` in `scripts/acting.py`.
 
 ## Another project
 
@@ -584,6 +638,7 @@ scripts/
   layers.py            her layers: import, check, repair, lining, under, scale, head, ...
   parts.py             closed eyes, open mouths, blushes, and the sheets to choose from
   blush.py             how a blush is drawn (parts.py and rig.py both use it)
+  acting.py            her expressions, emotion motions and taps, the kit's and her own
   rig.py               the model: how she moves, and the writing of the .moc3
   view.py              the viewer's small server
   gui.py               the GUI's small server: the steps as buttons (python live2d.py gui)

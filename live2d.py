@@ -22,6 +22,8 @@ Python that step needs, and prints the command it runs.
                                        mouth (mouth-line), and numbered sheets of the mouths and
                                        blushes to choose from (scripts/parts.py)
   live2d.py build <name>               her model: <out>/live2d/<name>-full/model/ and <name>-full.zip
+  live2d.py acting <name>              her expressions and motions written again into her built model,
+                                       with her own from her layers' live2d.json (about a second)
   live2d.py view [port]                the viewer, to try her model: http://127.0.0.1:8777/live2d/
   live2d.py gui [port]                 the same steps as buttons in a page on this PC: http://127.0.0.1:8780/
 
@@ -369,6 +371,8 @@ def main(args):
         run(seethrough_python(), "parts.py", rest[0])
     elif step == "build" and len(rest) == 1:
         run(build_python(), "rig.py", "build", kit.pose_of(rest[0]))
+    elif step == "acting" and len(rest) == 1:
+        run(sys.executable, "acting.py", "acting", kit.pose_of(rest[0]))
     elif step == "view" and len(rest) <= 1:
         run(sys.executable, "view.py", *rest)
     elif step == "gui" and len(rest) <= 1:
