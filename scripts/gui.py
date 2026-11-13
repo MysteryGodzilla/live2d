@@ -16,7 +16,7 @@ Pictures come from the project only: /files/characters/... and /files/out/....
 """
 import json, os, re, subprocess, sys, threading, time
 from http.server import ThreadingHTTPServer
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,6 +31,8 @@ NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 ROUND = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,40}")
 CHARACTER = re.compile(r"[a-z0-9][a-z0-9_-]*(:[A-Za-z0-9_-]{1,30})?")
 SEEDS = re.compile(r"[0-9]{1,9}(,[0-9]{1,9}){0,15}")
+STRENGTHS = re.compile(r"[01]?\.?[0-9]{1,3}(,[01]?\.?[0-9]{1,3}){0,5}")
+COLOUR = re.compile(r"(#[0-9a-fA-F]{6}|[a-zA-Z]{3,20})(, ?(#[0-9a-fA-F]{6}|[a-zA-Z]{3,20}))?")
 NEW_LAYER = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_ -]{0,29}")
 PICTURE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.(png|jpg)")
 GPU_STEPS = ("draw", "cutout", "upscale", "split")
@@ -179,6 +181,27 @@ def build_command(req):
             if sub == "mouth-line" and args.get("mode") in ("try", "back"):
                 out = ["parts", sub, name, "--" + args["mode"]] + (out[3:] if args["mode"] == "try" else [])
             return out, False
+        if sub == "eyes":
+            mode = args.get("mode")
+            if mode == "back":
+                return ["parts", "eyes", name, "--back"], False
+            if mode == "take":
+                return ["parts", "eyes", name, str(number(args, "number", "Eyes", 1, 99, whole=True))], False
+            if mode != "try":
+                raise Refuse("Eyes: try, take or back")
+            out = ["parts", "eyes", name, "--try"]
+            if args.get("seeds") not in (None, ""):
+                out += ["--seeds", text(args, "seeds", "Seed", SEEDS, 1, 60)]
+            if args.get("strength") not in (None, ""):
+                strengths = text(args, "strength", "Strength", STRENGTHS, 1, 40)
+                if any(not 0 < float(s) <= 1 for s in strengths.split(",")):
+                    raise Refuse("Strength: numbers from 0 to 1, as 0.4,0.55")
+                out += ["--strength", strengths]
+            if args.get("colour") not in (None, ""):
+                out += ["--colour", text(args, "colour", "Colour", COLOUR, 1, 60)]
+            if args.get("iris_only") is True:
+                out.append("--iris-only")
+            return out, True
         raise Refuse("Parts: not a command the page runs")
     if step == "layers":
         sub = args.get("command")
@@ -399,6 +422,35 @@ def oh_state(name):
     return {"has": "mouth_oh" in info.get("order", []), "now": now}
 
 
+def eyes_state(name):
+    """Her eyes (parts eyes): her drawing's seed, the candidates of the last try with their
+    labels, and whether she has redrawn eyes now."""
+    slug = name + "-full"
+    seed, known = 1, False
+    try:
+        with open(os.path.join(kit.characters(name, "full", "base.json")), encoding="utf-8") as f:
+            seed, known = int(json.load(f)["seed"]), True
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        with open(kit.out("parts", f"{slug}-eyes-try", "labels.json"), encoding="utf-8") as f:
+            labels = json.load(f)
+    except (OSError, ValueError):
+        labels = {}
+    tiles, folder = [], kit.out("parts", f"{slug}-eyes")
+    if os.path.isdir(folder):
+        for f in sorted(os.listdir(folder)):
+            m = re.fullmatch(r"([0-9]{1,2})-[^/\\]+\.png", f)
+            if m and m.group(1) in labels:
+                url = fresh(f"/files/out/parts/{slug}-eyes/{quote(f)}", os.path.join(folder, f))
+                tiles.append({"n": int(m.group(1)), "name": labels[m.group(1)].split(None, 1)[-1], "url": url})
+    tiles.sort(key=lambda t: t["n"])
+    now = os.path.join(folder, "now.png")
+    return {"seed": seed, "seed_known": known, "tiles": tiles,
+            "now_url": fresh(f"/files/out/parts/{slug}-eyes/now.png", now) if os.path.isfile(now) else None,
+            "redrawn": os.path.isdir(os.path.join(live2d.paths(name)["layers"], "eyes-drawn"))}
+
+
 def line_state(name):
     """Her closed mouth: whether it was drawn again (parts mouth-line), how, and its picture."""
     folder = live2d.paths(name)["layers"]
@@ -441,7 +493,8 @@ def one_character(name):
     return {"name": name, "steps": [{"what": w, "done": done, "next": how} for w, done, how in d["steps"]], "next": d["next"],
             "layers": d["order"], "frame": d["frame"], "pictures": pictures(name), "head_psds": psds,
             "built": os.path.exists(d["paths"]["model"]), "model": name + "-full",
-            "mouths": choices("mouths", name), "blushes": choices("blushes", name), "line": line_state(name), "oh": oh_state(name)}
+            "mouths": choices("mouths", name), "blushes": choices("blushes", name), "line": line_state(name), "oh": oh_state(name),
+            "eyes": eyes_state(name)}
 
 
 def rounds():
@@ -495,6 +548,7 @@ def state(recheck=False):
 FILE_PATTERNS = {
     "characters": re.compile(r"[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*/(base|cutout|base-2x)\.png"),
     "out": re.compile(r"(layers|parts|live2d/checks)/[A-Za-z0-9._-]+\.png|parts/[a-z0-9_-]+-full-(mouths|blushes)/[a-z0-9-]+\.png"
+                      r"|parts/[a-z0-9_-]+-full-eyes/[A-Za-z0-9._#,-]+\.png"  # an eye tile's name carries its colour words
                       r"|[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+\.(png|jpg)"),
 }
 KIT_PREVIEW = re.compile(r"/kit/(mouths|blushes)/previews/([0-9]{1,2}-[a-z0-9-]+\.png)")

@@ -20,6 +20,7 @@ project ([Another project](#another-project)). `SKILL.md` holds the same instruc
 - [The steps](#the-steps)
 - [Looks and styles](#looks-and-styles)
 - [Mouths and blushes](#mouths-and-blushes)
+- [Her eyes, drawn again](#her-eyes-drawn-again)
 - [Fixing the layers](#fixing-the-layers)
 - [Trying her model](#trying-her-model)
 - [What her model can do](#what-her-model-can-do)
@@ -447,6 +448,49 @@ click for it.
 
 After any of these, run `build` again and reload the viewer's page.
 
+## Her eyes, drawn again
+
+An upscaled drawing keeps an iris's shape but loses its depth: the gradient, the pupil, the rim,
+the glow and the shine go soft. `parts eyes` draws her eyes again, several times bigger, and lets
+you choose:
+
+```
+python live2d.py comfy start
+python live2d.py parts eyes akane --try
+python live2d.py parts eyes akane 2
+python live2d.py comfy stop
+python live2d.py build akane
+```
+
+`--try` makes `<out>/parts/akane-full-eyes.png`: her eyes now, then each candidate, numbered.
+
+- **Redrawn.** Both her eyes, as the model shows them, are cut out together (so they stay alike),
+  made about five times bigger and drawn over by Qwen Image on ComfyUI. The strength says how much
+  changes: 0 keeps them as they are, 1 draws them anew. `--try` makes 0.35, 0.5 and 0.65 unless
+  you give `--strength 0.4,0.55`. The seed is her drawing's own (`base.json`, kept by `pick`; 1 if
+  it has none), or the ones you give with `--seeds 77,1234`: another seed gives other eyes at the
+  same strength.
+- **Drawn iris.** Her iris drawn by code in her own iris colours: dark under the lid, light below,
+  a pupil, a rim, a glow and two highlights. No graphics card. Without ComfyUI running, `--try`
+  makes only this one.
+- **Another colour.** `--colour gold`, or `--colour gold,teal` for an eye each (the eye on the
+  picture's left first): a name (gold, teal, violet, crimson, amber, emerald, sapphire, ruby...)
+  or `#rrggbb`. Her iris is tinted to it first, which is a candidate of its own. The redraws and
+  the drawn iris then start from it, and the colour's words go in the prompt in place of her
+  look's.
+- **A fresh iris.** `--iris-only` takes only her iris from each redraw and keeps her own lashes and
+  eye whites, so a high strength can draw her a new iris without moving her lash line. It tries
+  0.6, 0.7 and 0.8: at 0.9 the redraw moves her eyes, and skin shows in her iris.
+
+`parts eyes akane <number>` takes one. Her eye white, iris and lash layers keep their shapes and
+take its colours, and her lashes take its line where it joins hers. They become sharp copies at
+two and a half times her frame's size (the head pass's are about twice), which `build`
+puts in her texture. Her own eyes are kept (`layers/full/eyes-drawn/`) the first time, and each
+`--try` starts from them, not from eyes taken since. `parts eyes akane --back` puts them back.
+
+In the GUI, step 7 has it: the seed (with a Random seed button), the strengths, the colour, Iris
+only, Try, and the candidates to click and take.
+
 ## Fixing the layers
 
 All of these are `python live2d.py layers <command> <name> ...`. Each one writes what
@@ -637,6 +681,7 @@ scripts/
   split.py             See-through: whole body, and head
   layers.py            her layers: import, check, repair, lining, under, scale, head, ...
   parts.py             closed eyes, open mouths, blushes, and the sheets to choose from
+  eyes.py              her eyes drawn again sharper (parts eyes): redraws on ComfyUI, a drawn iris
   blush.py             how a blush is drawn (parts.py and rig.py both use it)
   acting.py            her expressions, emotion motions and taps, the kit's and her own
   rig.py               the model: how she moves, and the writing of the .moc3

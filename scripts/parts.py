@@ -66,6 +66,23 @@ drawing and layers (see layers.py for the layers themselves).
       the ones given, to try them first): <out>/parts/<name>-blushes.png; with no
       name, on a plain drawn face as blushes/sheet.png beside this script. Each picture is also
       saved by itself, as the mouths are
+  eyes <name> --try [--seeds <a,b>] [--strength <s,t>] [--colour <c[,c]>] [--iris-only]
+  eyes <name> <number>  |  eyes <name> --back
+      her eyes drawn again, sharper, to choose from (eyes.py says how). --try makes a sheet,
+      <out>/parts/<name>-eyes.png: her eyes now, then each redraw by Qwen Image on ComfyUI (her
+      drawing's own seed, or the ones given; at strengths 0.35, 0.5 and 0.65, or the ones given: 0
+      keeps them as they are, 1 draws them anew), then her iris drawn by code in her own colours (no
+      graphics card). A redraw needs ComfyUI running (`live2d.py comfy start`) and the card. Then
+      `eyes <name> <number>` takes one: her eyewhite, irides and eyelash get its colours and lash
+      line, as sharp copies about 3 times the head pass's size. Her own are kept the first time
+      (layers/<pose>/eyes-drawn/); --back puts them back. Run build after either.
+      --colour gives her eyes another colour: her iris is tinted to it first (a candidate of its
+      own), and the redraws and the drawn iris start from that, with its words in the prompt. A
+      name (gold, teal, violet, crimson, amber, emerald, sapphire...) or #rrggbb; two with a comma
+      between give each eye its own, the eye on the picture's left first. --iris-only takes only
+      her iris from each redraw, keeping her lashes and eye whites, so a high strength can draw a
+      new iris without moving her lash line (strengths 0.6, 0.7 and 0.8 unless given: at 0.9 the redraw
+      moves her eyes, and skin shows in her iris)
   grin <name> [--no-tongue]
       for a character drawn with her mouth open (a grin): her drawn mouth is kept as
       layers/mouth-drawn.png and is mouth_close until w-mouth draws one; mouth_open is that mouth
@@ -1187,6 +1204,24 @@ def main(args):
         do_blush_sheet(*rest)
     elif cmd == "blush-sheet" and rest and not rest[0].startswith("--"):
         do_blush_sheet(rest[0], blush_given(options(rest[1:], ("size", "in", "down", "turn"))))
+    elif cmd == "eyes" and len(rest) == 2 and rest[1].isdigit():
+        import eyes as E
+        E.do_take(rest[0], int(rest[1]))
+    elif cmd == "eyes" and rest:
+        import eyes as E
+        o = options(rest[1:], ("seeds", "strength", "colour"), ("try", "back", "iris-only"))
+        loose = [r for r in rest[1:] if not r.startswith("--") and r not in o.values()]
+        try:
+            seeds = [int(s) for s in o["seeds"].split(",")] if "seeds" in o else None
+            strengths = [float(s) for s in o["strength"].split(",")] if "strength" in o else None
+        except ValueError:
+            sys.exit("--seeds takes whole numbers and --strength numbers from 0 to 1, each with commas between")
+        if o.get("back"):
+            E.do_back(rest[0])
+        elif o.get("try"):
+            E.do_try(rest[0], seeds, strengths, o.get("colour"), o.get("iris-only", False))
+        else:
+            sys.exit(__doc__)
     elif cmd == "mouth-masters" and not rest:
         do_mouth_masters()
     else:

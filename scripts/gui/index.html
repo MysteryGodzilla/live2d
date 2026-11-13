@@ -319,6 +319,12 @@ function randomSeeds() {
 }
 $("main").addEventListener("click", (e) => {
   if (e.target.id === "randseeds") return randomSeeds();
+  if (e.target.id === "randeyeseed") {  // one new seed for the eye redraw
+    const r = new Uint32Array(1);
+    crypto.getRandomValues(r);
+    V[cur + "|eye_seed"] = String(1 + (r[0] % 999999));
+    return drawMain();
+  }
   if (e.target.classList.contains("slidereset")) {  // a set of sliders back to the kit's own
     for (const [k, v] of Object.entries(JSON.parse(e.target.dataset.reset))) V[cur + "|" + k] = v;
     return drawMain();
@@ -664,6 +670,7 @@ function drawMain() {
     ["turn", "Tilt", -40, 40, 1, same, "°"],
   ], { size: 1, in: 0, down: 0, turn: 0 });
   const line = c.line || { redrawn: false, adjust: { size: 1, thick: 1, dark: 0.35 } };
+  const eyes = c.eyes || { seed: 1, seed_known: false, tiles: [], now_url: null, redrawn: false };
   const lineS = sliderSet("line_", line.adjust, [
     ["size", "Length", 60, 200, 5, pct, "%"],
     ["thick", "Thickness", 40, 300, 10, pct, "%"],
@@ -672,6 +679,25 @@ function drawMain() {
   html.push(stepBox(7, "Closed eyes, open mouth, blush", done[6], [],
     `<p>The drawing has her eyes open and her mouth shut. These draw the other two, and her blush. Click a mouth and a blush below to choose them, then draw each. Each choice replaces the last one. Build again after any of these.</p>` +
     `<h3>Closed eyes</h3>` + A(() => ({ step: "parts", name, args: { command: "closed-eyes" } }), "Closed eyes") +
+    `<h3>Her eyes, drawn again</h3>` +
+    `<p class="muted">Optional. An upscaled iris loses its depth: Try redraws her eyes several times bigger with Qwen Image (ComfyUI and the graphics card), at each strength (0 keeps them as they are, 1 draws them anew), and draws her iris by code as well. Her seed is her drawing's own unless you change it. A colour (gold, teal, crimson, amber, #3a7bd5...; two with a comma for an eye each) tints her iris first and goes in the prompt. Iris only keeps her lashes and eye whites, so a high strength can give her a new iris. Click the one you like to take it; Put back gives her own eyes back. Build again after either.</p>` +
+    `<div class="row"><label>Seed ${input("eye_seed", String(eyes.seed), 'size="10"')}</label>` +
+    `<button type="button" id="randeyeseed" title="A new random seed">Random seed</button>` +
+    `<label>Strengths ${input("eye_strength", val("eye_iris", false) ? "0.6,0.7,0.8" : "0.35,0.5,0.65", 'size="16"')}</label>` +
+    `<label>Colour ${input("eye_colour", "", 'size="16" placeholder="her own"')}</label>` +
+    `<label><input type="checkbox" data-k="eye_iris" data-redraw="1" ${val("eye_iris", false) ? "checked" : ""}> Iris only</label></div>` +
+    (eyes.seed_known ? "" : `<p class="muted">Her drawing has no record of its seed, so it starts at 1.</p>`) +
+    A(() => {
+      const args = { command: "eyes", mode: "try", seeds: val("eye_seed", String(eyes.seed)), strength: val("eye_strength", val("eye_iris", false) ? "0.6,0.7,0.8" : "0.35,0.5,0.65") };
+      if (val("eye_colour", "")) args.colour = val("eye_colour", "");
+      if (val("eye_iris", false)) args.iris_only = true;
+      return { step: "parts", name, args };
+    }, "Try", { gpu: true }) +
+    (eyes.tiles.length ? `<div class="opts">` + (eyes.now_url ? `<button type="button" class="opt" disabled title="Her eyes as they are"><img loading="lazy" src="${esc(eyes.now_url)}" alt="Her eyes now"><span>now</span></button>` : "") +
+      eyes.tiles.map((t) => `<button type="button" class="opt${t.n === +val("eyes_style", 0) ? " sel" : ""}" data-kind="eyes" data-n="${t.n}" title="Eyes ${t.n}: ${esc(t.name)}">` +
+        `<img loading="lazy" src="${esc(t.url)}" alt="Eyes ${t.n}, ${esc(t.name)}"><span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>` +
+      A(() => ({ step: "parts", name, args: { command: "eyes", mode: "take", number: String(val("eyes_style", eyes.tiles[0].n)) } }), "Take these eyes") : "") +
+    (eyes.redrawn ? A(() => ({ step: "parts", name, args: { command: "eyes", mode: "back" } }), "Put her own eyes back") : "") +
     `<h3>Her closed mouth</h3>` +
     `<p class="muted">Only if her drawn closed mouth is too thin or faint to see from afar: it is drawn again as a firm line along its own curve. Try shows her drawn mouth beside the new one and changes nothing. Draw her open mouth again after redrawing this one, so it fits.</p>` +
     lineS.html +
