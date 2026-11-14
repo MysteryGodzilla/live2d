@@ -466,6 +466,19 @@ def pout_state(name):
             "adjust": kept("pouts", name)}
 
 
+def iris_numbers(iris):
+    """The numbers of the kit irises she has, found by their names where layers.json has them (the kit's
+    irises may have been numbered again since), or None."""
+    style, names = iris.get("style"), iris.get("names")
+    if not isinstance(style, list) or not style:
+        return None
+    if isinstance(names, list) and names:
+        folder = os.path.join(kit.SCRIPTS, "irises")
+        found = {m.group(2): int(m.group(1)) for m in map(TILE.fullmatch, os.listdir(folder) if os.path.isdir(folder) else []) if m}
+        return [found[n] for n in names if n in found] or None
+    return [int(n) for n in style if isinstance(n, int)] or None
+
+
 def iris_state(name):
     """Her iris from the kit (parts iris): whether she has one, which for each eye, its colour, and whether
     the second eye's is mirrored."""
@@ -474,7 +487,7 @@ def iris_state(name):
             iris = json.load(f).get("iris") or {}
     except (OSError, ValueError):
         iris = {}
-    style = iris.get("style") if isinstance(iris.get("style"), list) else None
+    style = iris_numbers(iris)
     return {"has": bool(iris), "style": style, "colour": iris.get("colour") or "", "mirror": bool(iris.get("mirror"))}
 
 
@@ -523,8 +536,8 @@ def current(kind, name):
     except (OSError, ValueError):
         return None
     if kind == "irises":
-        style = (info.get("iris") or {}).get("style")
-        return int(style[0]) if isinstance(style, list) and style else None
+        style = iris_numbers(info.get("iris") or {})
+        return style[0] if style else None
     pattern = r"mouth_open from the kit's open mouth ([0-9]+)" if kind == "mouths" else r"blush drawn: the kit's style ([0-9]+)"
     for change in reversed(info.get("changes", [])):
         if kind == "mouths" and "mouth_open" in change and "from" in change:
