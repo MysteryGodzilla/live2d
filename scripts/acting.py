@@ -74,7 +74,7 @@ EXPRESSIONS = {
     "surprised": {"ParamBrowLY": 1, "ParamBrowRY": 1, "ParamBrowLForm": -0.3, "ParamBrowRForm": -0.3,
                   "ParamMouthOpenY": 0.55, "ParamMouthO": 1, "ParamEyeBallForm": -0.35, "ParamAngleY": 6,
                   "ParamBodyAngleY": 2},
-    # Tears at the corners of her eyes, brows drawn up in the middle, lids lowered, a trembling frown.
+    # Tears gathered at the bottom of her eyes, brows drawn up in the middle, lids lowered, a trembling frown.
     "crying": {"ParamFxTears": 1, "ParamBrowLY": 0.3, "ParamBrowRY": 0.3, "ParamBrowLForm": -1, "ParamBrowRForm": -1,
                "ParamEyeLOpen": times(0.7), "ParamEyeROpen": times(0.7), "ParamMouthForm": -0.9, "ParamMouthOpenY": 0.15,
                "ParamCheek": 0.4, "ParamAngleY": -8, "ParamEyeBallY": -0.3},

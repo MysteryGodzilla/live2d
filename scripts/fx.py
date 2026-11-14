@@ -6,7 +6,7 @@ parameter fades it in (rig.py's `marks`); her expressions set them (acting.py):
 
   fx_sweat      ParamFxSweat     a sweat drop beside her brow
   fx_anger      ParamFxAnger     an anger mark (four red arcs round a cross) on her head
-  fx_tears      ParamFxTears     a tear welling at the outer corner of each eye and running down
+  fx_tears      ParamFxTears     tears gathered along the bottom of each eye, a bead of them at its outer end
   fx_sparkle_l, fx_sparkle_r
                 ParamFxSparkle   star-shaped lights in her irises, which follow them
   fx_gloom      ParamFxGloom     a blue shade over her brow with lines hanging in it
@@ -39,6 +39,7 @@ ROOM = 0.7         # the cut round her head: her face's box and this share of it
 
 WATER = np.array([0.80, 0.92, 1.00], np.float32)
 WATER_EDGE = np.array([0.32, 0.52, 0.88], np.float32)
+TEAR = np.array([0.93, 0.97, 1.00], np.float32)  # gathered tears are nearly white
 ANGER = np.array([0.90, 0.16, 0.22], np.float32)
 ANGER_EDGE = np.array([0.52, 0.05, 0.10], np.float32)
 GLOOM = np.array([0.20, 0.22, 0.42], np.float32)
@@ -157,6 +158,18 @@ def her_face(images):
         for half, x in ((iris[:, :middle], 0), (iris[:, middle:], middle)):
             iy, ix = np.nonzero(half)
             irises.append((x + ix.min(), iy.min(), x + ix.max() + 1, iy.max() + 1) if len(ix) > 20 else None)
+    # Each eye's lower lid: the lowest drawn pixel of her eye in each column (xs, ys), smoothed.
+    drawn = np.zeros(face.shape, bool)
+    for layer in eyes:
+        drawn |= layer >= 0.25
+    lids = []
+    for x0, y0, x1, y1 in found:
+        part = drawn[y0:y1, x0:x1]
+        cols = np.nonzero(part.any(axis=0))[0]
+        low = y0 + part.shape[0] - 1 - part[::-1, cols].argmax(axis=0)
+        pad = max(1, len(cols) // 12)
+        low = np.convolve(np.pad(low.astype(float), pad, mode="edge"), np.ones(2 * pad + 1) / (2 * pad + 1), mode="valid")
+        lids.append((x0 + cols.astype(float), low))
     mouth = next((layer for layer in ("mouth_close", "mouth") if layer in images), None)
     lips = (a + b) / 2 + down * 1.45 * wide
     if mouth:
@@ -167,7 +180,7 @@ def her_face(images):
     room = ROOM * max(box[2] - box[0], box[3] - box[1])
     cut = (max(0, int(box[0] - room)), max(0, int(box[1] - room)), min(W, int(box[2] + room)), min(H, int(box[3] + room)))
     return {"frame": (W, H), "cut": cut, "box": box, "eyes": found, "a": a, "b": b, "wide": float(wide), "along": along,
-            "down": down, "irises": irises, "lips": lips}
+            "down": down, "irises": irises, "lips": lips, "lids": lids}
 
 
 def placed(f, adjust, at):
@@ -201,21 +214,27 @@ def anger(f, adjust):
 
 
 def tears(f, adjust):
+    """Tears gathered along the bottom of each eye: a pool lying on her lower lid, thin at the inner
+    corner and swelling toward the outer one, where a bead of it hangs a little under the lid. (A
+    stream running down each cheek was too much: the first user, 2026-11-15.)"""
     s = Sheet(f["cut"])
     for i, (x0, y0, x1, y1) in enumerate(f["eyes"]):
         out = -1 if i == 0 else 1  # the outer corner is away from her nose
-        centre = f["a"] if i == 0 else f["b"]
-        w, c = placed(f, dict(adjust, right=adjust["right"] * out), centre + f["along"] * out * 0.16 * (x1 - x0)
-                      + f["down"] * 0.46 * (y1 - y0))
-        u = np.linspace(0, 1, 60)
-        # A bead at her lid, a stream running down from it with a slight wave, and a drop at its end.
-        path = c + np.outer(u * 0.8 * w, f["down"]) + np.outer(0.035 * w * np.sin(u * 2.2 * np.pi) + out * 0.06 * w * u, f["along"])
-        wide = 0.06 * w * (0.7 + 0.3 * np.cos(u * np.pi))
-        for edge, colour, grow, alpha in ((True, WATER_EDGE, 0.028 * w, 0.8), (False, WATER, 0.0, 0.92)):
-            s.fill(circle(c, 0.085 * w + grow / 2), colour, alpha)
-            s.line(path, wide + grow, colour, alpha)
-            s.fill(drop(path[-1], 0.065 * w + grow / 2, -f["down"], 2.2), colour, alpha)
-        s.fill(circle(c - f["along"] * 0.025 * w - f["down"] * 0.025 * w, 0.03 * w), WHITE, 0.95)
+        w = f["wide"] * adjust["size"]
+        shift = (f["along"] * adjust["right"] * out + f["down"] * adjust["down"]) * f["wide"]
+        lid = f["lids"][i]
+        u = np.linspace(0.14, 0.88, 60)  # along her eye, from its inner corner to its outer one
+        xs = (x1 - u * (x1 - x0)) if i == 0 else (x0 + u * (x1 - x0))
+        edge = np.stack([xs, np.interp(xs, lid[0], lid[1])], 1) + shift
+        deep = w * (0.02 + 0.055 * ease((u - 0.15) / 0.55)) * np.sin(np.pi * np.clip((u - 0.14) / 0.74, 0, 1)) ** 0.5
+        wobble = 1 + 0.18 * np.sin(u * 9.0)  # the pool's top isn't a ruled line
+        top = edge - np.outer(deep * wobble, f["down"]) * 0.8
+        low = edge + np.outer(deep, f["down"]) * 0.2
+        bead = edge[int(0.8 * len(u))] + f["down"] * 0.03 * w
+        for colour, grow, alpha in ((WATER_EDGE, 0.012 * w, 0.6), (TEAR, 0.0, 0.93)):
+            s.fill(np.concatenate([top - f["down"] * grow, (low + f["down"] * grow)[::-1]]), colour, alpha)
+            s.fill(drop(bead, 0.05 * w + grow, -f["down"], 1.4), colour, alpha)
+        s.fill(circle(bead - f["along"] * 0.015 * w - f["down"] * 0.015 * w, 0.016 * w), WHITE, 0.95)
     return {"fx_tears": s}
 
 

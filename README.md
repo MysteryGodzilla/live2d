@@ -481,7 +481,7 @@ each as a layer of its own on top of her head, hidden until its parameter fades 
 |---|---|---|
 | A sweat drop beside her brow | `ParamFxSweat` | `scared` |
 | An anger mark on her head | `ParamFxAnger` | `angry` |
-| A tear at the outer corner of each eye, running down | `ParamFxTears` | `crying` |
+| Tears gathered along the bottom of each eye | `ParamFxTears` | `crying` |
 | Star-shaped lights in her irises, which follow them | `ParamFxSparkle` | `excited` |
 | A blue shade over her brow, with lines hanging in it | `ParamFxGloom` | `scared` |
 | Two short curved lines beside each corner of her mouth | `ParamFxPuff` | `pouting` |
