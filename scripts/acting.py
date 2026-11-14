@@ -36,7 +36,7 @@ import kit  # noqa: E402
 #   embarrassed smile, and a poke she flinches at and pouts about.
 # A value is added to the parameter; times(v) multiplies it (her eyes can still blink). A parameter
 # a character doesn't have is left out: ParamMouthO, her "O" mouth (parts.py mouth-oh), is there
-# only for a character who has one.
+# only for a character who has one. The ParamFx ones are her expression marks (fx.py, rig.py's marks).
 def times(value):
     return ("x", value)
 
@@ -56,22 +56,31 @@ EXPRESSIONS = {
     # Cute anime angry: a pout with flushed cheeks, chin down, hands on her hips.
     "angry": {"ParamBrowLY": -0.6, "ParamBrowRY": -0.6, "ParamBrowLForm": 1, "ParamBrowRForm": 1,
               "ParamMouthForm": -0.8, "ParamCheek": 0.5, "ParamEyeLOpen": times(0.85), "ParamEyeROpen": times(0.85),
+              "ParamFxAnger": 1,
               "ParamAngleY": -6, "ParamEyeBallY": 0.3, "ParamArmLA": 10, "ParamArmLB": -10, "ParamArmRA": 10,
               "ParamArmRB": -10},
     # A sulk: cheeks puffed out, her pout mouth if she has one (else her own, turned down), brows
     # down and angled as in a glare, lids lowered, a flush, her head tipped.
     "pouting": {"ParamCheekPuff": 1, "ParamMouthPout": 1, "ParamMouthForm": -0.5, "ParamBrowLY": -0.5,
                 "ParamBrowRY": -0.5, "ParamBrowLForm": 0.9, "ParamBrowRForm": 0.9, "ParamCheek": 0.6,
-                "ParamEyeLOpen": times(0.8), "ParamEyeROpen": times(0.8), "ParamAngleZ": 5, "ParamAngleY": -4},
+                "ParamEyeLOpen": times(0.8), "ParamEyeROpen": times(0.8), "ParamAngleZ": 5, "ParamAngleY": -4,
+                "ParamFxPuff": 1},
     # Small irises, brows up, mouth a little open (her "O" mouth if she has one), hands drawn up in
     # front of her.
     "scared": {"ParamEyeBallForm": -1, "ParamBrowLY": 0.9, "ParamBrowRY": 0.9, "ParamBrowLForm": -0.7,
                "ParamBrowRForm": -0.7, "ParamMouthOpenY": 0.3, "ParamMouthO": 1, "ParamMouthForm": -0.7, "ParamAngleY": 4,
-               "ParamArmLA": 4, "ParamArmLB": -9, "ParamArmRA": 4, "ParamArmRB": -9},
+               "ParamArmLA": 4, "ParamArmLB": -9, "ParamArmRA": 4, "ParamArmRB": -9, "ParamFxSweat": 1, "ParamFxGloom": 0.8},
     # Brows high, an "O" mouth open (her "O" mouth if she has one), head back a little.
     "surprised": {"ParamBrowLY": 1, "ParamBrowRY": 1, "ParamBrowLForm": -0.3, "ParamBrowRForm": -0.3,
                   "ParamMouthOpenY": 0.55, "ParamMouthO": 1, "ParamEyeBallForm": -0.35, "ParamAngleY": 6,
                   "ParamBodyAngleY": 2},
+    # Tears at the corners of her eyes, brows drawn up in the middle, lids lowered, a trembling frown.
+    "crying": {"ParamFxTears": 1, "ParamBrowLY": 0.3, "ParamBrowRY": 0.3, "ParamBrowLForm": -1, "ParamBrowRForm": -1,
+               "ParamEyeLOpen": times(0.7), "ParamEyeROpen": times(0.7), "ParamMouthForm": -0.9, "ParamMouthOpenY": 0.15,
+               "ParamCheek": 0.4, "ParamAngleY": -8, "ParamEyeBallY": -0.3},
+    # Stars in her eyes, brows up, a wide open smile, leaning in.
+    "excited": {"ParamFxSparkle": 1, "ParamBrowLY": 0.7, "ParamBrowRY": 0.7, "ParamMouthForm": 1, "ParamMouthOpenY": 0.6,
+                "ParamCheek": 0.4, "ParamAngleY": 5, "ParamBodyAngleY": 3},
 }
 # group -> the expression it plays (Surprise was image2live2d's own until her "O" mouth, 2026-11-13)
 EMOTIONS = {"Happy": "happy", "Angry": "angry", "Awkward": "blushing", "Surprise": "surprised"}

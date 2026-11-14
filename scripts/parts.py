@@ -137,6 +137,12 @@ drawing and layers (see layers.py for the layers themselves).
       <out>/parts/<name>-irises.png, in the colour and at the size given (or the ones she has);
       with none, each by itself as irises/sheet.png. Each picture is also saved by itself, as the
       mouths are
+  fx-sheet <name>
+      her expression marks, each on her face: a sweat drop, an anger mark, tears, sparkles in her
+      eyes, a gloom over her brow and puff marks beside her mouth, as <out>/parts/<name>-fx.png.
+      The build draws them for every character (fx.py) and her expressions fade them in; this
+      shows them without building. "fx" in her layers' live2d.json changes one:
+      {"fx": {"sweat": {"size": 1.3, "right": 0.2, "down": -0.1}}}, in eye widths
   mouth-masters
       draws the kit's open mouths' masks (mouths/<number>-line.png, -inside, -tongue, -teeth:
       white on clear, 240 by 180) where they aren't there yet. Redraw one in any paint program and
@@ -1260,6 +1266,37 @@ def do_mouth_from(name, other):
     print(f"{name}: mouth from {other}, scale {abs(k):.2f}, turned {np.degrees(np.angle(k)):.1f} degrees")
 
 
+def do_fx_sheet(name):
+    """Her expression marks (fx.py), each on her face: <out>/parts/<name>-fx.png. Changes nothing."""
+    import acting
+    import fx as F
+    info = L.load(name)
+    images = {layer: Image.open(L.part_path(name, layer)).convert("RGBA") for layer in info["order"]}
+    f = F.her_face(images)
+    made = F.for_her(images, acting.settings(name).get("fx"))
+    if not made:
+        sys.exit(f"{name}: no eye found on each side of her face (her eyewhite, eyelash and irides layers), so no marks")
+    bx0, by0, bx1, by1 = f["box"]  # her face, with room for the marks on her hair
+    room = 0.3 * (bx1 - bx0)
+    x0, y0 = max(f["cut"][0], int(bx0 - room)), max(f["cut"][1], int(by0 - room))
+    x1, y1 = min(f["cut"][2], int(bx1 + room)), min(f["cut"][3], int(by1 + 0.3 * room))
+    cut = lambda im: np.asarray(im.crop((x0, y0, x1, y1)), np.float32) / 255
+    base, _ = L.composite([(layer, cut(images[layer])) for layer in info["order"] if layer not in L.SHUT])
+    face = cut(images["face"])[..., 3] > 0.5
+    white = cut(images["eyewhite"])[..., 3] if "eyewhite" in images else 1.0
+    cells = [("no mark", base)]
+    for mark, (param, layers) in F.MARKS.items():
+        rgb = base
+        for layer in layers:
+            own = layer in info["order"]  # a layer of her own with a mark's name is used instead
+            m = cut(images[layer] if own else made[layer][0]) if own or layer in made else None
+            if m is not None:
+                a = m[..., 3] * (face if mark == "gloom" else white if mark == "sparkle" else 1.0)  # as the rig clips them
+                rgb = m[..., :3] * a[..., None] + rgb * (1 - a[..., None])
+        cells.append((f"{mark}  {param}", rgb))
+    sheet(cells, out_path(name, "fx"), wide=520, cols=4)
+
+
 def options(rest, words, flags=()):
     """<name> and what follows it: --word value pairs and --flags."""
     given, i = {}, 0
@@ -1376,6 +1413,8 @@ def main(args):
             E.do_try(rest[0], seeds, strengths, o.get("colour"), o.get("iris-only", False))
         else:
             sys.exit(__doc__)
+    elif cmd == "fx-sheet" and len(rest) == 1:
+        do_fx_sheet(rest[0])
     elif cmd == "iris-sheet" and (not rest or not rest[0].startswith("--")):
         import iris as I
         o = options(rest[1:], ("colour", "size", "tall", "down", "right"))

@@ -55,6 +55,7 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acting  # noqa: E402
 import blush as blush_marks  # noqa: E402
+import fx as fx_marks  # noqa: E402
 import kit  # noqa: E402
 
 VENDOR = os.path.join(kit.KIT, "vendor")
@@ -82,6 +83,7 @@ ROLES = {
     "mouth_oh": SemanticRole.mouth_cavity,  # her "O" mouth (see mouth_shapes)
     "mouth_pout": SemanticRole.mouth,       # her pout mouth (see pout)
 }
+ROLES.update({layer: SemanticRole.accessory for layer in fx_marks.LAYERS})  # her expression marks (see marks)
 # Opening her mouth, as her eyes shut (see SQUINT): her closed line stays solid while her drawn open
 # mouth starts as a slit hanging from its top edge, and the two swap over the first tenth of the
 # way; from there the open mouth is solid and grows down to its full height, its top edge (her upper
@@ -204,7 +206,7 @@ def soft_mesh(layer, **how):
     the way to nothing, so that box cut it off in a rectangle with hard edges (its first user, 2026-11-12:
     "cheeks have hard cut offs"). Its mesh here is a whole lattice over the box of everything the
     texture atlas keeps of it (alpha above 8), the same box the atlas cuts."""
-    if layer.semantic_role is not SemanticRole.blush:
+    if layer.semantic_role is not SemanticRole.blush and LAYER_OF.get(layer.id) not in fx_marks.LAYERS:  # a mark is soft too
         return whole_mesh(layer, **how)
     with Image.open(layer.texture_path) as img:
         alpha = img.convert("RGBA").getchannel("A")
@@ -602,7 +604,8 @@ def cheek_puff(rig, fig):
         far = PUFF * PUFF_TIMES[0] * 2 * half * out * high
         return math.copysign(far, x - mid), -(PUFF_DROP + PUFF_LOW * (1 - ease(y0, mouth_y, y))) * far
 
-    moving = [face] + [(p, m) for p, m in fig.head if p.semantic_role is SemanticRole.blush]
+    moving = [face] + [(p, m) for p, m in fig.head  # her blush and her puff marks ride on the cheek
+                       if p.semantic_role is SemanticRole.blush or LAYER_OF.get(p.id) == "fx_puff"]
     rig.parameters.append(Parameter(id="ParamCheekPuff", min=0.0, max=1.0, default=0.0, keyforms=[
         Keyform(value=0.0, mesh_offsets={p.id: author._zeros(m) for p, m in moving}),
         Keyform(value=1.0, mesh_offsets={p.id: [move(x, y) for x, y in m.vertices] for p, m in moving})]))
@@ -623,6 +626,64 @@ def pout(rig, fig):
     rig.parameters.append(Parameter(id="ParamMouthPout", min=0.0, max=1.0, default=0.0, keyforms=[
         Keyform(value=0.0, opacity_overrides={**{p.id: 1.0 for p in shut}, **{p.id: 0.0 for p in pouts}}),
         Keyform(value=1.0, opacity_overrides={**{p.id: 0.0 for p in shut}, **{p.id: 1.0 for p in pouts}})]))
+
+
+# Her expression marks (fx.py): a sweat drop, an anger mark, tears, sparkles in her eyes, a gloom over
+# her brow, puff marks beside her mouth. Each is a layer the build draws, on top of her head's other
+# parts, hidden until its parameter (ParamFxSweat and so on, 0 to 1) fades it in. They are head
+# ornaments to image2live2d, which would swing each on a pendulum: that is taken out. Each turns
+# with the part of her face it sits on (FX_KINDS, read by turn_parts). The sparkles are cut off by
+# her eye whites, as her irises are, and go where her irises go (follow). The gloom is cut off by her
+# face.
+FX_KINDS = {"fx_sweat": "hair", "fx_anger": "hair", "fx_tears": "glasses", "fx_sparkle_l": "glasses",
+            "fx_sparkle_r": "glasses", "fx_gloom": "face", "fx_puff": "mouth"}
+
+
+def follow(rig, part, mesh, leader, leader_mesh):
+    """Give a part every move another part has. At each key of each parameter that moves the
+    leader, its points' moves are fitted by a shift, a stretch and a turn (the best such fit), and
+    this part's points are moved by the same."""
+    import numpy as np
+    lead = np.c_[np.array(leader_mesh.vertices, float), np.ones(len(leader_mesh.vertices))]
+    mine = np.c_[np.array(mesh.vertices, float), np.ones(len(mesh.vertices))]
+    for param in rig.parameters:
+        for key in param.keyforms:
+            moves = key.mesh_offsets.get(leader.id)
+            if moves is None:
+                key.mesh_offsets.pop(part.id, None)
+            else:
+                fit = np.linalg.lstsq(lead, np.array(moves, float), rcond=None)[0]
+                key.mesh_offsets[part.id] = [(float(dx), float(dy)) for dx, dy in mine @ fit]
+
+
+def marks(rig, fig, masks):
+    made = {}
+    for part, mesh in fig.drawn:
+        if LAYER_OF.get(part.id) in fx_marks.LAYERS:
+            made.setdefault(LAYER_OF[part.id], []).append((part, mesh))
+    if not made:
+        return
+    every = [pm for parts in made.values() for pm in parts]
+    clear_moves(rig, lambda pid: pid.startswith("ParamAcc"), every)  # no swinging
+    face = next((p for p, _ in fig.head if p.semantic_role is SemanticRole.face_base), None)
+    eyes = {p.semantic_role.value[-1]: (p, m) for p, m in fig.head if p.semantic_role.value.startswith("pupil")}
+    for layer, parts in made.items():
+        for part, mesh in parts:
+            if layer == "fx_gloom" and face:
+                masks[part.id] = face.id
+            if layer.startswith("fx_sparkle") and layer[-1] in eyes:
+                iris, iris_mesh = eyes[layer[-1]]
+                follow(rig, part, mesh, iris, iris_mesh)
+                if iris.id in masks:
+                    masks[part.id] = masks[iris.id]
+    for mark, (param_id, layers) in fx_marks.MARKS.items():
+        parts = [p for layer in layers for p, _ in made.get(layer, [])]
+        if parts and by_id(rig, param_id) is None:
+            rig.parameters.append(Parameter(id=param_id, min=0.0, max=1.0, default=0.0, keyforms=[
+                Keyform(value=0.0, opacity_overrides={p.id: 0.0 for p in parts}),
+                Keyform(value=1.0, opacity_overrides={p.id: 1.0 for p in parts})]))
+    print("her expression marks: " + ", ".join(f"{mark} ({param_id})" for mark, (param_id, layers) in fx_marks.MARKS.items()
+                                               if any(layer in made for layer in layers)))
 
 
 def lids(rig, fig):
@@ -717,13 +778,16 @@ def turn_parts(rig, fig, reach):
     said = []
     for part, mesh in fig.head:
         role = part.semantic_role
-        kind = KINDS.get(role.value)
+        mark = FX_KINDS.get(LAYER_OF.get(part.id))  # an expression mark turns with what it sits on
+        kind = mark or KINDS.get(role.value)
         if not kind:
             continue
         x0, y0, x1, y1 = box(mesh.vertices)
         centre = (x0 + x1) / 2
         side = side_of(centre)
-        if kind == "eye":
+        if mark:
+            centre, side = middle, 0
+        elif kind == "eye":
             ex0, _, ex1, _ = eye_boxes[side]
             centre = (ex0 + ex1) / 2
         elif role is SemanticRole.accessory and len(eye_boxes) == 2 and all(
@@ -888,6 +952,7 @@ def pose_rig(rig, fig):
     pout(rig, fig)
     cheek_puff(rig, fig)
     print("head turn: " + "; ".join(turn_parts(rig, fig, reach)))
+    marks(rig, fig, masks)
     arms = [arm for arm in (Arm(rig, fig, "L"), Arm(rig, fig, "R")) if arm.ok]
     legs = [leg for leg in (Leg(rig, fig, "L"), Leg(rig, fig, "R")) if leg.ok]
     liven_idle(rig, arms)
@@ -1160,7 +1225,7 @@ def i2l_tool(name):
 # lighter than those are touched: a dark outline, and a highlight further in, stay as drawn.
 # Her face's fine parts are left out: a mouth or a brow is a thin line with no inside, and the clean
 # recoloured a faint mouth line from its darker corners.
-FINE = {"mouth", "mouth_close", "mouth_open", "mouth_oh", "mouth_pout", "nose", "eyebrow", "eyelash", "eyewhite", "irides", "eye_close",
+FINE = set(fx_marks.LAYERS) | {"mouth", "mouth_close", "mouth_open", "mouth_oh", "mouth_pout", "nose", "eyebrow", "eyelash", "eyewhite", "irides", "eye_close",
         "blush", "eyewear", "earwear"}
 RIM = 3          # how far in from her edge a pixel still counts as on her rim, in her frame's pixels
 RIM_PALE = 0.08  # ...and how much lighter than the inside beside it (0 to 1) makes it a pale one
@@ -1332,6 +1397,14 @@ def write_layers(name):
             print("   her blush: the kit's style 1, drawn from her eyes (`parts blush` makes another her layer)")
         else:
             print("   her blush: image2live2d's own, as no eye was found on each side of her face")
+    if "face" in images:  # her expression marks, on top of everything (see marks)
+        drawn = []
+        for layer, (img, copy, at, per) in fx_marks.for_her(images, settings(name).get("fx")).items():
+            if layer not in images:  # a layer of her own with a mark's name is used instead
+                images[layer], copies[layer] = img, (copy, at, per)
+                names.append(layer)
+                drawn.append(layer)
+        print("   her expression marks: " + (", ".join(drawn) if drawn else "none drawn (no eye found on each side of her face)"))
     if "blush" in names and "blush" in images:  # see UNDER_BLUSH
         for layer in UNDER_BLUSH:
             if layer in names and names.index(layer) > names.index("blush"):

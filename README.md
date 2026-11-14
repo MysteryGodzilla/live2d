@@ -20,6 +20,7 @@ project ([Another project](#another-project)). `SKILL.md` holds the same instruc
 - [The steps](#the-steps)
 - [Looks and styles](#looks-and-styles)
 - [Mouths and blushes](#mouths-and-blushes)
+- [Her expression marks](#her-expression-marks)
 - [Her eyes, drawn again](#her-eyes-drawn-again)
 - [Her irises, from the kit](#her-irises-from-the-kit)
 - [Fixing the layers](#fixing-the-layers)
@@ -471,6 +472,37 @@ arches), 5 flat (a wide H: a line with a short tick across each end). `--size`, 
 for her closed mouth with `ParamMouthPout`, which `pouting` sets. She can still talk through it.
 A character with no pout mouth pouts with her own closed mouth, turned down.
 
+## Her expression marks
+
+The small drawn signs an anime face shows a feeling with. The build draws them for every character,
+each as a layer of its own on top of her head, hidden until its parameter fades it in:
+
+| Mark | Parameter | Her expressions that show it |
+|---|---|---|
+| A sweat drop beside her brow | `ParamFxSweat` | `scared` |
+| An anger mark on her head | `ParamFxAnger` | `angry` |
+| A tear at the outer corner of each eye, running down | `ParamFxTears` | `crying` |
+| Star-shaped lights in her irises, which follow them | `ParamFxSparkle` | `excited` |
+| A blue shade over her brow, with lines hanging in it | `ParamFxGloom` | `scared` |
+| Two short curved lines beside each corner of her mouth | `ParamFxPuff` | `pouting` |
+
+```
+python live2d.py parts fx-sheet akane
+```
+
+shows each on her face (`<out>/parts/akane-full-fx.png`) without building. They are placed from her
+eyes, in eye widths, so they fit any face. To change one, give its size and place in her layers'
+`live2d.json`, then look at the sheet again and build:
+
+```json
+{"fx": {"sweat": {"size": 1.3, "right": 0.2, "down": -0.1}}}
+```
+
+`right` and `down` are in eye widths (a minus: left, up); for the tears and the puff marks `right`
+moves each one outward. The marks are `sweat`, `anger`, `tears`, `sparkle`, `gloom` and `puff`. A
+layer of your own named for a mark (`fx_sweat`, `fx_anger`, `fx_tears`, `fx_sparkle_l` and
+`fx_sparkle_r`, `fx_gloom`, `fx_puff`) is used instead of the drawn one.
+
 ## Her eyes, drawn again
 
 An upscaled drawing keeps an iris's shape but loses its depth: the gradient, the pupil, the rim,
@@ -635,7 +667,8 @@ Every model the kit builds has the same names, so an app's settings and prompts 
   her hair is wide): the locks beside her face apart from each other, one tail apart from the
   other. Her head's turn and tilt and her body's sway and lean all move them.
 - **Expressions,** held until another is set: `happy` (eyes shut in a "^" smile), `tired`,
-  `blushing`, `angry`, `pouting`, `scared`, `surprised`. Each character can have her own of any of them, and
+  `blushing`, `angry`, `pouting`, `scared`, `surprised`, `crying`, `excited`. Some show a drawn mark
+  (an anger mark, a sweat drop, tears: see [Her expression marks](#her-expression-marks)). Each character can have her own of any of them, and
   new ones: see [Her own expressions](#her-own-expressions).
 - **Emotion motions,** a few seconds each: `Happy`, `Sad`, `Angry`, `Awkward`, `Think`, `Surprise`,
   `Question`, `Curious`, and `Idle`. These are the motion group names AIRI plays for each emotion.
@@ -757,6 +790,7 @@ scripts/
   iris.py              an iris from the kit in each eye (parts iris), in a clean oval, in any colour
   irises/              the kit's irises, numbered, and their previews
   blush.py             how a blush is drawn (parts.py and rig.py both use it)
+  fx.py                her expression marks: a sweat drop, an anger mark, tears, sparkles, a gloom, puff marks
   acting.py            her expressions, emotion motions and taps, the kit's and her own
   rig.py               the model: how she moves, and the writing of the .moc3
   view.py              the viewer's small server

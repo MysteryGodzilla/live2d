@@ -182,6 +182,8 @@ def build_command(req):
             if sub == "mouth-line" and args.get("mode") in ("try", "back"):
                 out = ["parts", sub, name, "--" + args["mode"]] + (out[3:] if args["mode"] == "try" else [])
             return out, False
+        if sub == "fx-sheet":
+            return ["parts", sub, name], False
         if sub == "mouth-pout":
             out = ["parts", sub, name]
             if args.get("mode") == "try":
@@ -385,7 +387,7 @@ def pictures(name):
     return {"drawing": url_for("characters", f"{name}/full/base.png"), "cutout": url_for("characters", f"{name}/full/cutout.png"),
             "twice": url_for("characters", f"{name}/full/base-2x.png"), "check": url_for("out", f"layers/{slug}-check.png"),
             "mouths": url_for("out", f"parts/{slug}-mouths.png"), "blushes": url_for("out", f"parts/{slug}-blushes.png"),
-            "irises": url_for("out", f"parts/{slug}-irises.png"), "iris": url_for("out", f"parts/{slug}-iris.png"), "pouts": url_for("out", f"parts/{slug}-pouts.png"),
+            "irises": url_for("out", f"parts/{slug}-irises.png"), "iris": url_for("out", f"parts/{slug}-iris.png"), "pouts": url_for("out", f"parts/{slug}-pouts.png"), "fx": url_for("out", f"parts/{slug}-fx.png"),
             "sheet": url_for("out", f"live2d/checks/{slug}-sheet.png")}
 
 
