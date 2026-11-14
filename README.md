@@ -21,6 +21,7 @@ project ([Another project](#another-project)). `SKILL.md` holds the same instruc
 - [Looks and styles](#looks-and-styles)
 - [Mouths and blushes](#mouths-and-blushes)
 - [Her eyes, drawn again](#her-eyes-drawn-again)
+- [Her irises, from the kit](#her-irises-from-the-kit)
 - [Fixing the layers](#fixing-the-layers)
 - [Trying her model](#trying-her-model)
 - [What her model can do](#what-her-model-can-do)
@@ -496,6 +497,50 @@ puts in her texture. Her own eyes are kept (`layers/full/eyes-drawn/`) the first
 In the GUI, step 7 has it: the seed (with a Random seed button), the strengths, the colour, Iris
 only, Try, and the candidates to click and take.
 
+## Her irises, from the kit
+
+An iris picture in each of her eyes, in place of her drawn ones. The kit has a set of them
+(`scripts/irises/`), as it has mouths and blushes. No graphics card.
+
+```
+python live2d.py parts iris-sheet akane
+python live2d.py parts iris akane --style 3
+python live2d.py parts iris akane --style 3,18 --colour gold,teal --tall 1.12
+```
+
+`iris-sheet` shows every iris in her own eyes, numbered (`<out>/parts/akane-full-irises.png`).
+`parts iris` gives her one:
+
+- Each of her irises becomes a clean oval: an ellipse fitted to her own iris's outline, with the
+  bumps the split left on it (lash shading, a notch from a lock of hair) left out. The picture is
+  stretched into that oval, so a round picture becomes as oval as her iris is. Her eye white still
+  clips it, so her lids cover the top as before.
+- `--style` is a number, or two with a comma for an eye each. The eye on the picture's left is the
+  first.
+- `--colour` turns the iris to another colour: a name (gold, teal, crimson, amber...) or `#rrggbb`,
+  or two with a comma. The iris's main hue becomes that colour. A second colour in it turns by the
+  same amount, so it stays a second colour. Highlights stay white and the pupil dark. `hers` is
+  each eye's own colour from her drawing. `own` is the iris's own colours.
+- `--tall 1.12` makes the oval taller. It grows upward, under her lid, and its lower edge stays
+  where her drawing has it. Most anime irises are taller than they are wide.
+- `--size`, `--down` and `--right` change its size and place, in shares of her iris's width.
+- `--mirror` flips the second eye's picture.
+- `--file` takes a picture of your own (or two): a round iris, clear round it or on a plain
+  background.
+
+What you give is kept in `layers.json`, so the next `parts iris` and the sheet start from it. Her
+own irises are kept (`layers/full/eyes-drawn/`) and every fit starts from their outline.
+`parts iris akane --back` puts them back. The new iris is a sharp copy at the size of the eye cut
+(about five times her frame's), which `build` puts in her texture.
+
+An iris of your own for the kit is a new number: `scripts/irises/<number>-<name>.png`, a round
+iris that fills its picture, clear outside it. A clear patch inside it (a lash rubbed out by hand)
+is painted in from the iris beside it. Run `python live2d.py parts iris-sheet` after a change, to
+draw the kit's own previews again.
+
+In the GUI, step 7 has it: the irises to click, the colour, the other eye's number, the sliders,
+and Put back.
+
 ## Fixing the layers
 
 All of these are `python live2d.py layers <command> <name> ...`. Each one writes what
@@ -687,6 +732,8 @@ scripts/
   layers.py            her layers: import, check, repair, lining, under, scale, head, ...
   parts.py             closed eyes, open mouths, blushes, and the sheets to choose from
   eyes.py              her eyes drawn again sharper (parts eyes): redraws on ComfyUI, a drawn iris
+  iris.py              an iris from the kit in each eye (parts iris), in a clean oval, in any colour
+  irises/              the kit's irises, numbered, and their previews
   blush.py             how a blush is drawn (parts.py and rig.py both use it)
   acting.py            her expressions, emotion motions and taps, the kit's and her own
   rig.py               the model: how she moves, and the writing of the .moc3

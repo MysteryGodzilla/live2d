@@ -32,6 +32,7 @@ ROUND = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,40}")
 CHARACTER = re.compile(r"[a-z0-9][a-z0-9_-]*(:[A-Za-z0-9_-]{1,30})?")
 SEEDS = re.compile(r"[0-9]{1,9}(,[0-9]{1,9}){0,15}")
 STRENGTHS = re.compile(r"[01]?\.?[0-9]{1,3}(,[01]?\.?[0-9]{1,3}){0,5}")
+IRIS_STYLE = re.compile(r"[0-9]{1,2}(,[0-9]{1,2})?")
 COLOUR = re.compile(r"(#[0-9a-fA-F]{6}|[a-zA-Z]{3,20})(, ?(#[0-9a-fA-F]{6}|[a-zA-Z]{3,20}))?")
 NEW_LAYER = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_ -]{0,29}")
 PICTURE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.(png|jpg)")
@@ -180,6 +181,20 @@ def build_command(req):
                     out += [f"--{key}", f"{number(args, key, key.capitalize(), low, high):g}"]
             if sub == "mouth-line" and args.get("mode") in ("try", "back"):
                 out = ["parts", sub, name, "--" + args["mode"]] + (out[3:] if args["mode"] == "try" else [])
+            return out, False
+        if sub in ("iris", "iris-sheet"):
+            if sub == "iris" and args.get("mode") == "back":
+                return ["parts", "iris", name, "--back"], False
+            out = ["parts", sub, name]
+            if sub == "iris" and args.get("style") not in (None, ""):
+                out += ["--style", text(args, "style", "Iris", IRIS_STYLE, 1, 5)]
+            if args.get("colour") not in (None, ""):
+                out += ["--colour", text(args, "colour", "Colour", COLOUR, 1, 60)]
+            for key, low, high in IRIS_RANGES:
+                if args.get(key) not in (None, ""):
+                    out += [f"--{key}", f"{number(args, key, key.capitalize(), low, high):g}"]
+            if sub == "iris" and args.get("mirror") is True:
+                out.append("--mirror")
             return out, False
         if sub == "eyes":
             mode = args.get("mode")
@@ -360,6 +375,7 @@ def pictures(name):
     return {"drawing": url_for("characters", f"{name}/full/base.png"), "cutout": url_for("characters", f"{name}/full/cutout.png"),
             "twice": url_for("characters", f"{name}/full/base-2x.png"), "check": url_for("out", f"layers/{slug}-check.png"),
             "mouths": url_for("out", f"parts/{slug}-mouths.png"), "blushes": url_for("out", f"parts/{slug}-blushes.png"),
+            "irises": url_for("out", f"parts/{slug}-irises.png"), "iris": url_for("out", f"parts/{slug}-iris.png"),
             "sheet": url_for("out", f"live2d/checks/{slug}-sheet.png")}
 
 
@@ -391,10 +407,12 @@ def choices(kind, name):
 MOUTH_RANGES = (("size", 0.3, 3), ("down", -0.3, 0.3), ("right", -0.3, 0.3), ("turn", -45, 45))
 BLUSH_RANGES = (("size", 0.3, 3), ("in", -1, 1), ("down", -1, 1), ("turn", -60, 60))
 LINE_RANGES = (("size", 0.5, 3), ("thick", 0.3, 4), ("dark", 0, 1))
+IRIS_RANGES = (("size", 0.5, 2), ("tall", 0.8, 1.6), ("down", -0.5, 0.5), ("right", -0.5, 0.5))
 # What layers.json keeps for each (parts.py's MOUTH_KEY, BLUSH_KEY and LINE_KEY), and their plain values.
 KEPT = {"mouths": ("open_mouth", {"size": 1.0, "down": 0.0, "right": 0.0, "turn": 0.0}),
         "blushes": ("blush_place", {"size": 1.0, "in": 0.0, "down": 0.0, "turn": 0.0}),
-        "line": ("mouth_line", {"size": 1.0, "thick": 1.0, "dark": 0.35})}
+        "line": ("mouth_line", {"size": 1.0, "thick": 1.0, "dark": 0.35}),
+        "irises": ("iris", {"size": 1.0, "tall": 1.0, "down": 0.0, "right": 0.0})}
 
 
 def kept(kind, name):
@@ -422,6 +440,18 @@ def oh_state(name):
             now = int(m.group(1))
             break
     return {"has": "mouth_oh" in info.get("order", []), "now": now}
+
+
+def iris_state(name):
+    """Her iris from the kit (parts iris): whether she has one, which for each eye, its colour, and whether
+    the second eye's is mirrored."""
+    try:
+        with open(os.path.join(live2d.paths(name)["layers"], "layers.json"), encoding="utf-8") as f:
+            iris = json.load(f).get("iris") or {}
+    except (OSError, ValueError):
+        iris = {}
+    style = iris.get("style") if isinstance(iris.get("style"), list) else None
+    return {"has": bool(iris), "style": style, "colour": iris.get("colour") or "", "mirror": bool(iris.get("mirror"))}
 
 
 def eyes_state(name):
@@ -468,6 +498,9 @@ def current(kind, name):
             info = json.load(f)
     except (OSError, ValueError):
         return None
+    if kind == "irises":
+        style = (info.get("iris") or {}).get("style")
+        return int(style[0]) if isinstance(style, list) and style else None
     pattern = r"mouth_open from the kit's open mouth ([0-9]+)" if kind == "mouths" else r"blush drawn: the kit's style ([0-9]+)"
     for change in reversed(info.get("changes", [])):
         if kind == "mouths" and "mouth_open" in change and "from" in change:
@@ -496,7 +529,7 @@ def one_character(name):
             "layers": d["order"], "frame": d["frame"], "pictures": pictures(name), "head_psds": psds,
             "built": os.path.exists(d["paths"]["model"]), "model": name + "-full",
             "mouths": choices("mouths", name), "blushes": choices("blushes", name), "line": line_state(name), "oh": oh_state(name),
-            "eyes": eyes_state(name)}
+            "eyes": eyes_state(name), "irises": dict(choices("irises", name), **iris_state(name))}
 
 
 def rounds():
@@ -549,11 +582,11 @@ def state(recheck=False):
 
 FILE_PATTERNS = {
     "characters": re.compile(r"[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*/(base|cutout|base-2x)\.png"),
-    "out": re.compile(r"(layers|parts|live2d/checks)/[A-Za-z0-9._-]+\.png|parts/[a-z0-9_-]+-full-(mouths|blushes)/[a-z0-9-]+\.png"
+    "out": re.compile(r"(layers|parts|live2d/checks)/[A-Za-z0-9._-]+\.png|parts/[a-z0-9_-]+-full-(mouths|blushes|irises)/[a-z0-9-]+\.png"
                       r"|parts/[a-z0-9_-]+-full-eyes/[A-Za-z0-9._#,-]+\.png"  # an eye tile's name carries its colour words
                       r"|[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+\.(png|jpg)"),
 }
-KIT_PREVIEW = re.compile(r"/kit/(mouths|blushes)/previews/([0-9]{1,2}-[a-z0-9-]+\.png)")
+KIT_PREVIEW = re.compile(r"/kit/(mouths|blushes|irises)/previews/([0-9]{1,2}-[a-z0-9-]+\.png)")
 
 
 class Handler(view.Viewer):

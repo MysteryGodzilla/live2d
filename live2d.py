@@ -367,7 +367,7 @@ def main(args):
         run(seethrough_python(), "split.py", rest[1], kit.pose_of(rest[0]), *rest[2:])
     elif step in ("layers", "parts") and len(rest) >= 2:
         run(seethrough_python(), step + ".py", rest[0], kit.pose_of(rest[1]), *rest[2:])
-    elif step == "parts" and rest in (["mouth-masters"], ["mouth-sheet"], ["blush-sheet"]):  # the kit's own, no character
+    elif step == "parts" and rest in (["mouth-masters"], ["mouth-sheet"], ["blush-sheet"], ["iris-sheet"]):  # the kit's own, no character
         run(seethrough_python(), "parts.py", rest[0])
     elif step == "build" and len(rest) == 1:
         run(build_python(), "rig.py", "build", kit.pose_of(rest[0]))

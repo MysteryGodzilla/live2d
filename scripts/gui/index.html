@@ -91,6 +91,7 @@ summary { cursor: pointer; font-weight: 600; }
 @media (hover: none) { .zoomhint .hover { display: none; } }
 .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }
 .opts.big { grid-template-columns: repeat(auto-fill, minmax(min(460px, 100%), 1fr)); }
+.opts.mid { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
 .slides { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 8px 0 2px; }
 .slides label { display: flex; align-items: center; gap: 6px; }
 .slides input[type=range] { width: 130px; accent-color: var(--accent); }
@@ -627,12 +628,12 @@ function drawMain() {
   // 7. Closed eyes, mouth, blush
   // Each mouth or blush as a picture to click: her own face's once her sheet is made, else the kit's.
   const chosen = (kind) => val(kind + "_style", (c[kind] && c[kind].now) || (kind === "oh" ? 8 : 1));
-  const options = (kind, sheetCmd, what, extra) => {
+  const options = (kind, sheetCmd, what, extra, alone, cls) => {
     const o = c[kind] || { tiles: [] };
     const sel = +chosen(kind);
-    return `<p class="muted">${o.on_her ? "On her own face. Click one to choose it, then draw it." : "On plain skin, as the kit draws them. Click one to choose it, or see them on her own face first."}</p>` +
+    return `<p class="muted">${o.on_her ? "On her own face. Click one to choose it, then draw it." : (alone || "On plain skin, as the kit draws them. Click one to choose it, or see them on her own face first.")}</p>` +
       A(() => ({ step: "parts", name, args: Object.assign({ command: sheetCmd }, extra ? extra() : {}) }), o.on_her ? "Show them on her face again" : "Show them on her face") +
-      `<div class="opts">` + o.tiles.map((t) => `<button type="button" class="opt${t.n === sel ? " sel" : ""}" data-kind="${kind}" data-n="${t.n}" title="${esc(what)} ${t.n}: ${esc(t.name)}">` +
+      `<div class="opts${cls && o.on_her ? " " + cls : ""}">` + o.tiles.map((t) => `<button type="button" class="opt${t.n === sel ? " sel" : ""}" data-kind="${kind}" data-n="${t.n}" title="${esc(what)} ${t.n}: ${esc(t.name)}">` +
         `<img loading="lazy" src="${esc(t.url)}" alt="${esc(what)} ${t.n}, ${esc(t.name)}">` + (t.n === o.now ? `<b class="now">she has this</b>` : "") +
         `<span>${t.n} &middot; ${esc(t.name)}</span></button>`).join("") + `</div>`;
   };
@@ -670,6 +671,16 @@ function drawMain() {
     ["down", "Down", -30, 40, 1, pct, "% of an eye"],
     ["turn", "Tilt", -40, 40, 1, same, "°"],
   ], { size: 1, in: 0, down: 0, turn: 0 });
+  const irises = c.irises || { tiles: [], has: false, style: null, colour: "", mirror: false, adjust: { size: 1, tall: 1, down: 0, right: 0 } };
+  const irisS = sliderSet("iris_", irises.adjust || { size: 1, tall: 1, down: 0, right: 0 }, [
+    ["size", "Size", 60, 160, 2, pct, "%"],
+    ["tall", "Taller", 80, 150, 2, pct, "%"],
+    ["down", "Down", -30, 30, 1, pct, "% of her iris"],
+    ["right", "Right", -30, 30, 1, pct, "% of her iris"],
+  ], { size: 1, tall: 1, down: 0, right: 0 });
+  const irisOther = irises.style && irises.style.length > 1 && irises.style[1] !== irises.style[0] ? String(irises.style[1]) : "";
+  // The colour always goes: an empty box is the iris's own colours, not the colour she had.
+  const irisLook = () => Object.assign({ colour: String(val("iris_colour", irises.colour || "")).trim() || "own" }, irisS.place());
   const line = c.line || { redrawn: false, adjust: { size: 1, thick: 1, dark: 0.35 } };
   const eyes = c.eyes || { seed: 1, seed_known: false, tiles: [], now_url: null, redrawn: false };
   const lineS = sliderSet("line_", line.adjust, [
@@ -701,6 +712,16 @@ function drawMain() {
     (eyes.tiles.length ? `<p class="muted">Each Try adds its eyes to these, numbered on. Clear starts afresh.</p>` +
       A(() => ({ step: "parts", name, args: { command: "eyes", mode: "clear" } }), "Clear the candidates") : "") +
     (eyes.redrawn ? A(() => ({ step: "parts", name, args: { command: "eyes", mode: "back" } }), "Put her own eyes back") : "") +
+    `<h3>Her irises, from the kit</h3>` +
+    `<p class="muted">Optional. An iris picture from the kit in each of her eyes, in place of her drawn ones: each of her irises becomes a clean oval fitted to her own, with the picture stretched into it, sharp. Click one to choose it. Colour turns it to another colour (gold, teal, crimson, #3a7bd5...; two with a comma for an eye each; "hers" is each eye's own colour from her drawing); empty is the iris's own colours. Other eye is a second iris's number, for the eye on the picture's right. Taller grows the oval upward, under her lid, as most anime irises are. "Show them on her face" draws every iris with these. Build again after.</p>` +
+    irisS.html +
+    `<div class="row"><label>Colour ${input("iris_colour", irises.colour || "", 'size="16" placeholder="the iris\'s own"')}</label>` +
+    `<label>Other eye ${input("iris_other", irisOther, 'size="4" placeholder="same"')}</label>` +
+    `<label><input type="checkbox" data-k="iris_mirror" data-redraw="1" ${val("iris_mirror", !!irises.mirror) ? "checked" : ""}> Mirror the second eye's</label></div>` +
+    options("irises", "iris-sheet", "Iris", irisLook, "By themselves, as the kit has them. Click one to choose it, or see them in her own eyes first.", "mid") +
+    A(() => ({ step: "parts", name, args: Object.assign({ command: "iris", style: String(chosen("irises")) + (/^[0-9]{1,2}$/.test(String(val("iris_other", irisOther)).trim()) ? "," + String(val("iris_other", irisOther)).trim() : "") }, irisLook(), val("iris_mirror", !!irises.mirror) ? { mirror: true } : {}) }), irises.has ? "Give her this iris instead" : "Give her this iris") +
+    (irises.has ? A(() => ({ step: "parts", name, args: { command: "iris", mode: "back" } }), "Put her own irises back") : "") +
+    (irises.has ? img(c.pictures.iris, "Her eyes before and after her new irises") : "") +
     `<h3>Her closed mouth</h3>` +
     `<p class="muted">Only if her drawn closed mouth is too thin or faint to see from afar: it is drawn again as a firm line along its own curve. Try shows her drawn mouth beside the new one and changes nothing. Draw her open mouth again after redrawing this one, so it fits.</p>` +
     lineS.html +

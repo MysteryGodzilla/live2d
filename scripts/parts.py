@@ -103,6 +103,29 @@ drawing and layers (see layers.py for the layers themselves).
       after grin: mouth_close becomes a drawn ω (a cat's mouth), on her drawn mouth's top line and
       tilted with it, in her mouth's own dark colour: what she shows with her mouth shut (dozing,
       working)
+  iris <name> [--style <number>[,<number>] | --file <picture>[,<picture>]] [--colour <colour>[,<colour>]]
+       [--size <times>] [--tall <times>] [--down <share>] [--right <share>] [--mirror] [--back]
+      an iris from the kit's library in each of her eyes, in place of her drawn ones (which an
+      upscale leaves soft and flat, and the split cuts with a ragged outline). Each of her irises
+      becomes a clean oval, fitted to her own iris's outline with its bumps left out, and the iris
+      picture is stretched into it; the rig clips it by her eye white as before. --style is one of
+      irises/ beside this script (iris-sheet shows them), or two with a comma for an eye each, the
+      eye on the picture's left first. --file is a picture of your own instead: a round iris, clear
+      round it or on a plain background. --colour turns the iris to another colour (a name such as
+      gold, teal, crimson, amber, or #rrggbb; two with a comma for an eye each): its main hue
+      becomes that colour and a second colour in it turns with it, its highlights stay white.
+      `hers` is each eye's own colour from her drawing, `own` the iris's as it was drawn. --size
+      is the oval's size next to her own iris, --tall makes it taller (it grows upward, under her
+      lid, as most anime irises are; 1.12 is a little), --down and --right move it, in shares of
+      her iris's width. --mirror flips the second eye's picture. What you give is kept in
+      layers.json, so the next iris and the sheet start from it. Her own irises are kept
+      (eyes-drawn/, beside her layers.json) and every fit starts from them; --back puts them back.
+      A picture of before and after: <out>/parts/<name>-iris.png
+  iris-sheet [<name>] [--colour ...] [--size ...] [--tall ...] [--down ...] [--right ...]
+      the kit's irises, numbered: with a name, each one in her own eyes, as
+      <out>/parts/<name>-irises.png, in the colour and at the size given (or the ones she has);
+      with none, each by itself as irises/sheet.png. Each picture is also saved by itself, as the
+      mouths are
   mouth-masters
       draws the kit's open mouths' masks (mouths/<number>-line.png, -inside, -tongue, -teeth:
       white on clear, 240 by 180) where they aren't there yet. Redraw one in any paint program and
@@ -1159,6 +1182,14 @@ def placing(o):
         sys.exit("--size, --down, --right and --turn take numbers, as 1.2 or -0.01")
 
 
+def iris_given(o):
+    """--size, --tall, --down and --right as numbers, None where not given."""
+    try:
+        return {k: float(o[k]) if k in o else None for k in ("size", "tall", "down", "right")}
+    except ValueError:
+        sys.exit("--size, --tall, --down and --right take numbers, as 1.12 or -0.05")
+
+
 def main(args):
     if not args:
         sys.exit(__doc__)
@@ -1227,6 +1258,17 @@ def main(args):
             E.do_try(rest[0], seeds, strengths, o.get("colour"), o.get("iris-only", False))
         else:
             sys.exit(__doc__)
+    elif cmd == "iris-sheet" and (not rest or not rest[0].startswith("--")):
+        import iris as I
+        o = options(rest[1:], ("colour", "size", "tall", "down", "right"))
+        I.do_sheet(rest[0] if rest else None, o.get("colour"), iris_given(o))
+    elif cmd == "iris" and rest:
+        import iris as I
+        o = options(rest[1:], ("style", "file", "colour", "size", "tall", "down", "right"), ("mirror", "back"))
+        if o.get("back"):
+            I.do_back(rest[0])
+        else:
+            I.do_iris(rest[0], o.get("style"), o.get("file"), o.get("colour"), iris_given(o), bool(o.get("mirror")))
     elif cmd == "mouth-masters" and not rest:
         do_mouth_masters()
     else:
