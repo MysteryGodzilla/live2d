@@ -701,12 +701,13 @@ def marks(rig, fig, masks):
 #   drawn, with the gap growing as a lid's does, it tore: a fold is a thin stroke that joins her
 #   lash at one end, and the part that stayed and the part that went pulled it into wrinkles.)
 # Her lashes and her white are moved by the one rule, so no gap opens between them. Her tears
-# (fx.py) lie on her lower lid and go with it. A character with no drawn closed eye, or no eye
+# (fx.py) lie on her lower lid and rise with it, each column of them whole (see TEAR_RISE). A character with no drawn closed eye, or no eye
 # white, shuts her eyes as before.
 LID_THIN = 0.5     # how much of her upper lash's thickness is gone when her eye is shut
 LID_THICK = 1.6    # a lash is at most this many times the usual thickness: more is a corner's flick, not the lash
+TEAR_RISE = 0.75   # her tears rise this much of what her lower lid does: shut, they lie along her closed eye, not over it
 LIDS = {}          # each eye part's outline, as points in the rig's units (set when her layers are written):
-#                    her white's {"top": [...]}, her lashes' {"low": [...], "high": [...]} (each stroke's ends in each column)
+#                    her white's {"top": [...], "bottom": [...]}, her lashes' {"low": [...], "high": [...]} (each stroke's ends in each column)
 
 
 def lid_fall(eye, line):
@@ -721,11 +722,13 @@ def lid_fall(eye, line):
     wy = np.convolve(np.pad(wy, pad, mode="edge"), np.ones(2 * pad + 1) / (2 * pad + 1), mode="valid")
     wy = np.maximum(wy, line)
     low, high = np.array(lash["low"]), np.array(lash["high"])
-    cols = np.unique(low[:, 0])
+    step = float(np.median(np.diff(wx))) if len(wx) > 1 else 1e-3  # one column's width
     tall = max(float(wy.max() - line), 1e-6)
     thick = np.zeros(len(wx))
     for i, (x, b) in enumerate(zip(wx, wy)):
-        near = low[:, 0] == cols[np.argmin(np.abs(cols - x))]  # her lashes' strokes in the column nearest this one
+        # Her lashes' strokes in this column. Not by an equal x: once her head has been turned upright
+        # (straighten), the points of one column of her drawing no longer share one.
+        near = np.abs(low[:, 0] - x) < 0.6 * step
         runs = sorted(zip(low[near, 1], high[near, 1]))
         over = [(lo, hi) for lo, hi in runs if hi > b + 0.02 * tall and lo < b + 0.25 * tall]  # the stroke on the opening's top
         if over:
@@ -748,6 +751,7 @@ def lid_fall(eye, line):
 
 def lids(rig, fig):
     """Rewrite how each eye shuts (ParamEyeLOpen, ParamEyeROpen)."""
+    import numpy as np
     drawn = lambda part, mesh: DRAWN.get(part.id) or box(mesh.vertices)
     for side in "lr":
         param = by_id(rig, f"ParamEye{side.upper()}Open")
@@ -774,14 +778,19 @@ def lids(rig, fig):
         x0, _, x1, _ = drawn(*eye.get("eye_white", eye["eye"]))
         beside = lambda x: x0 - 0.3 * (x1 - x0) < x < x1 + 0.3 * (x1 - x0)  # by this eye, not the other
         tears = [(p, m) for p, m in fig.head if LAYER_OF.get(p.id) == "fx_tears"] if fall else []
+        under = sorted(LIDS[eye["eye_white"][0].id]["bottom"]) if tears else []  # the bottom of her eye's opening, column by column
+        rise = lambda x: max(0.0, line - float(np.interp(x, [q[0] for q in under], [q[1] for q in under]))) * TEAR_RISE
         for value, shut in ((0.0, 1.0), (SQUINT, 1 - SQUINT)):
+            # Shut (0), her open eye isn't shown: it is flat on the line there, as it always was, so over
+            # the last of a blink her lash and its fold thin onto the line as they fade into her closed eye.
+            lid = fall if fall and value else None
             for kind in ("eye", "eye_white"):
                 if kind in eye:
                     part, mesh = eye[kind]
-                    keys[value].mesh_offsets[part.id] = [(0.0, fall(x, y, shut) if fall else (line - y) * shut)
+                    keys[value].mesh_offsets[part.id] = [(0.0, lid(x, y, shut) if lid else (line - y) * shut)
                                                          for x, y in mesh.vertices]
-            for part, mesh in tears:
-                keys[value].mesh_offsets[part.id] = [(0.0, fall(x, y, shut) if beside(x) else 0.0) for x, y in mesh.vertices]
+            for part, mesh in tears:  # each column of them whole, up with the bottom of her eye's opening under it
+                keys[value].mesh_offsets[part.id] = [(0.0, rise(x) * shut if beside(x) else 0.0) for x, _ in mesh.vertices]
         if "eye_closed" in eye:
             for value in keys:
                 keys[value].opacity_overrides[eye["eye_closed"][0].id] = 1.0 if value == 0 else 0.0
@@ -1514,7 +1523,9 @@ def write_layers(name):
                                      for y, row in enumerate(solid) if row.any()][::max(1, solid.shape[0] // 240)]
                 at = lambda c, r: ((inked[0] + int(c) + 0.5) / part.width, 1 - (inked[1] + int(r)) / part.height)
                 if out_role.value.startswith("eye_white"):  # the top of her eye's opening in each column (see lid_fall)
-                    LIDS[file[:-4]] = {"top": [at(c, solid[:, c].argmax()) for c in np.nonzero(solid.any(axis=0))[0]]}
+                    across = np.nonzero(solid.any(axis=0))[0]
+                    LIDS[file[:-4]] = {"top": [at(c, solid[:, c].argmax()) for c in across],
+                                       "bottom": [at(c, len(solid) - solid[::-1, c].argmax()) for c in across]}
                 elif out_role.value in ("eye_l", "eye_r"):  # each stroke of her lashes in each column: its lower end, its upper
                     ends = {"low": [], "high": []}
                     for c in np.nonzero(solid.any(axis=0))[0]:
