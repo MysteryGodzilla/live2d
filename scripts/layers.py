@@ -111,7 +111,7 @@ UNDER_EVEN = 0.012 # under: colours are evened out over this many columns each s
 # makes them): the drawing has her eyes open, mouth shut and no blush, so check and repair leave
 # these out.
 SHUT = {"eye_close", "eye_close2", "mouth_open", "mouth_oh", "mouth_pout", "blush",
-        "fx_sweat", "fx_anger", "fx_tears", "fx_sparkle_l", "fx_sparkle_r", "fx_gloom", "fx_puff"}  # fx.py's marks, if she has her own
+        "fx_sweat", "fx_anger", "fx_tears", "fx_sparkle_l", "fx_sparkle_r", "fx_gloom"}  # fx.py's marks, if she has her own
 
 
 POSES = {"working", "full"}  # drawings with layers of their own, besides her base (idle)

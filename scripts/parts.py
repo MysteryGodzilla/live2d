@@ -139,7 +139,7 @@ drawing and layers (see layers.py for the layers themselves).
       mouths are
   fx-sheet <name>
       her expression marks, each on her face: a sweat drop, an anger mark, tears, sparkles in her
-      eyes, a gloom over her brow and puff marks beside her mouth, as <out>/parts/<name>-fx.png.
+      eyes and a gloom over her brow, as <out>/parts/<name>-fx.png.
       The build draws them for every character (fx.py) and her expressions fade them in; this
       shows them without building. "fx" in her layers' live2d.json changes one:
       {"fx": {"sweat": {"size": 1.3, "right": 0.2, "down": -0.1}}}, in eye widths

@@ -63,16 +63,15 @@ EXPRESSIONS = {
     # down and angled as in a glare, lids lowered, a flush, her head tipped.
     "pouting": {"ParamCheekPuff": 1, "ParamMouthPout": 1, "ParamMouthForm": -0.5, "ParamBrowLY": -0.5,
                 "ParamBrowRY": -0.5, "ParamBrowLForm": 0.9, "ParamBrowRForm": 0.9, "ParamCheek": 0.6,
-                "ParamEyeLOpen": times(0.8), "ParamEyeROpen": times(0.8), "ParamAngleZ": 5, "ParamAngleY": -4,
-                "ParamFxPuff": 1},
+                "ParamEyeLOpen": times(0.8), "ParamEyeROpen": times(0.8), "ParamAngleZ": 5, "ParamAngleY": -4},
     # Small irises, brows up, mouth a little open (her "O" mouth if she has one), hands drawn up in
     # front of her.
-    "scared": {"ParamEyeBallForm": -1, "ParamBrowLY": 0.9, "ParamBrowRY": 0.9, "ParamBrowLForm": -0.7,
+    "scared": {"ParamEyeBallForm": -0.69, "ParamBrowLY": 0.9, "ParamBrowRY": 0.9, "ParamBrowLForm": -0.7,
                "ParamBrowRForm": -0.7, "ParamMouthOpenY": 0.3, "ParamMouthO": 1, "ParamMouthForm": -0.7, "ParamAngleY": 4,
                "ParamArmLA": 4, "ParamArmLB": -9, "ParamArmRA": 4, "ParamArmRB": -9, "ParamFxSweat": 1, "ParamFxGloom": 0.8},
     # Brows high, an "O" mouth open (her "O" mouth if she has one), head back a little.
     "surprised": {"ParamBrowLY": 1, "ParamBrowRY": 1, "ParamBrowLForm": -0.3, "ParamBrowRForm": -0.3,
-                  "ParamMouthOpenY": 0.55, "ParamMouthO": 1, "ParamEyeBallForm": -0.35, "ParamAngleY": 6,
+                  "ParamMouthOpenY": 0.55, "ParamMouthO": 1, "ParamEyeBallForm": -0.24, "ParamAngleY": 6,
                   "ParamBodyAngleY": 2},
     # Tears gathered at the bottom of her eyes, brows drawn up in the middle, lids lowered, a trembling frown.
     "crying": {"ParamFxTears": 1, "ParamBrowLY": 0.3, "ParamBrowRY": 0.3, "ParamBrowLForm": -1, "ParamBrowRForm": -1,
@@ -111,7 +110,7 @@ TAPS = {
         "ParamArmRB": [(0, 0), (0.12, 3), (0.6, 0)],
         "ParamBrowLY": [(0, 0), (0.1, 1), (0.5, 1), (0.9, -0.3), (1.4, -0.3), (1.7, 0)],
         "ParamBrowRY": [(0, 0), (0.1, 1), (0.5, 1), (0.9, -0.3), (1.4, -0.3), (1.7, 0)],
-        "ParamEyeBallForm": [(0, 0), (0.1, -0.8), (0.45, -0.8), (0.9, 0)],
+        "ParamEyeBallForm": [(0, 0), (0.1, -0.55), (0.45, -0.55), (0.9, 0)],
         "ParamMouthOpenY": [(0, 0), (0.12, 0.6), (0.4, 0.5), (0.75, 0)],
         "ParamMouthForm": [(0, 0), (0.7, 0), (0.95, -0.7), (1.4, -0.7), (1.7, 0)],
         "ParamBrowLForm": [(0, 0), (0.7, 0), (0.95, 0.7), (1.4, 0.7), (1.7, 0)],

@@ -755,7 +755,7 @@ function drawMain() {
     A(() => ({ step: "parts", name, args: Object.assign({ command: "mouth-pout", style: String(val("pout_style", ["1 peak", "2 wavy", "3 three", "4 pursed", "5 flat"][(pouts.style || 1) - 1] || "1 peak")).slice(0, 1) }, poutS.place()) }), pouts.has ? "Draw her pout mouth again" : "Draw her pout mouth") +
     img(c.pictures.pouts, "The pout mouths on her face") +
     `<h3>Her expression marks</h3>` +
-    `<p class="muted">Nothing to choose: the build draws them for every character, and her expressions fade them in (a sweat drop and a gloom when scared, an anger mark when angry, tears when crying, sparkles in her eyes when excited, puff marks when pouting). Show draws each on her face without building. To move or resize one, see "Her expression marks" in the README.</p>` +
+    `<p class="muted">Nothing to choose: the build draws them for every character, and her expressions fade them in (a sweat drop and a gloom when scared, an anger mark when angry, tears when crying, sparkles in her eyes when excited). Show draws each on her face without building. To move or resize one, see "Her expression marks" in the README.</p>` +
     A(() => ({ step: "parts", name, args: { command: "fx-sheet" } }), "Show her expression marks") +
     img(c.pictures.fx, "Her expression marks, each on her face") +
     `<h3>Her blush</h3>` +

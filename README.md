@@ -484,7 +484,6 @@ each as a layer of its own on top of her head, hidden until its parameter fades 
 | Tears gathered along the bottom of each eye | `ParamFxTears` | `crying` |
 | Star-shaped lights in her irises, which follow them | `ParamFxSparkle` | `excited` |
 | A blue shade over her brow, with lines hanging in it | `ParamFxGloom` | `scared` |
-| Two short curved lines beside each corner of her mouth | `ParamFxPuff` | `pouting` |
 
 ```
 python live2d.py parts fx-sheet akane
@@ -498,10 +497,10 @@ eyes, in eye widths, so they fit any face. To change one, give its size and plac
 {"fx": {"sweat": {"size": 1.3, "right": 0.2, "down": -0.1}}}
 ```
 
-`right` and `down` are in eye widths (a minus: left, up); for the tears and the puff marks `right`
-moves each one outward. The marks are `sweat`, `anger`, `tears`, `sparkle`, `gloom` and `puff`. A
-layer of your own named for a mark (`fx_sweat`, `fx_anger`, `fx_tears`, `fx_sparkle_l` and
-`fx_sparkle_r`, `fx_gloom`, `fx_puff`) is used instead of the drawn one.
+`right` and `down` are in eye widths (a minus: left, up); for the tears `right` moves each one
+outward. The marks are `sweat`, `anger`, `tears`, `sparkle` and `gloom`. A layer of your own named
+for a mark (`fx_sweat`, `fx_anger`, `fx_tears`, `fx_sparkle_l` and `fx_sparkle_r`, `fx_gloom`) is
+used instead of the drawn one.
 
 ## Her eyes, drawn again
 
@@ -661,7 +660,7 @@ Every model the kit builds has the same names, so an app's settings and prompts 
 
 - **Parameters.** The standard Cubism ones for head, eyes, brows, mouth, body and breath. Also
   `ParamArmLA` and `ParamArmRA` (shoulder), `ParamArmLB` and `ParamArmRB` (elbow), `ParamLegLB` and
-  `ParamLegRB` (knee), `ParamEyeBallForm` (-1 is small, frightened irises), `ParamCheek` (blush),
+  `ParamLegRB` (knee), `ParamEyeBallForm` (her irises' size: -1 tiny, 0 her own, 1 large; a fright is about -0.7), `ParamCheek` (blush),
   and physics for hair, skirt and chest. Her hair swings in sections, each by itself
   (`ParamHairFront`, `ParamHairFront2`, `ParamHairBack`, `ParamHairBack2` and so on, as many as
   her hair is wide): the locks beside her face apart from each other, one tail apart from the
@@ -790,7 +789,7 @@ scripts/
   iris.py              an iris from the kit in each eye (parts iris), in a clean oval, in any colour
   irises/              the kit's irises, numbered, and their previews
   blush.py             how a blush is drawn (parts.py and rig.py both use it)
-  fx.py                her expression marks: a sweat drop, an anger mark, tears, sparkles, a gloom, puff marks
+  fx.py                her expression marks: a sweat drop, an anger mark, tears, sparkles, a gloom
   acting.py            her expressions, emotion motions and taps, the kit's and her own
   rig.py               the model: how she moves, and the writing of the .moc3
   view.py              the viewer's small server

@@ -271,7 +271,13 @@ KINDS = {"eye_l": "eye", "eye_r": "eye", "eye_white_l": "eye", "eye_white_r": "e
 LOOK, LOOK_UP = 0.40, 0.22  # how far an iris goes at a full look, in iris widths, and in heights
 HIDE, HIDE_UP = 0.20, 0.12  # how much of an iris may go out of its white
 TURN_LOOK = 0.30  # how much of a full look her irises add by themselves at a full turn or nod
-SMALL_IRIS = 0.62  # an iris's size at ParamEyeBallForm -1: the small irises of a fright
+# Her irises' size (ParamEyeBallForm): from tiny at -1 through her own at 0 to large at 1, each about
+# its own middle; her white still cuts a large one off. A fright is about -0.6. (It had a key at -1
+# and at 0 and none at 1, and past 0 her irises went: first user, 2026-11-16, "at the biggest the eye
+# goes white".) Two keys, at -1 and 1, the same step either side of her own size, so 0 is her own:
+# a key at 0 as well made her model a third bigger (every iris and sparkle shape is kept once for
+# each key of each parameter that moves it).
+IRIS_RANGE = 0.55  # an iris is 1 - this of her own at ParamEyeBallForm -1, and 1 + this at 1
 # Her lids: an eye shuts by its lashes and its white coming down onto the line of her closed eye
 # (how each point of them comes down: see lid_fall),
 # the white taking the iris with it (it is the iris's mask), all of it solid until the eye is
@@ -539,11 +545,11 @@ def look(rig, fig):
     masks = {part.id: whites[side][0].id for side, (part, _) in irises.items() if side in whites}
     if irises and by_id(rig, "ParamEyeBallForm") is None:  # Cubism's own name for it
         rig.parameters.append(Parameter(id="ParamEyeBallForm", min=-1.0, max=1.0, default=0.0,
-                                        keyforms=[Keyform(value=-1.0), Keyform(value=0.0)]))
+                                        keyforms=[Keyform(value=-1.0), Keyform(value=1.0)]))
         for iris in irises.values():
             x0, y0, x1, y1 = drawn(*iris)
             write_moves(rig, "ParamEyeBallForm", *iris, lambda a, x, y, cx=(x0 + x1) / 2, cy=(y0 + y1) / 2: (
-                abs(a) * (SMALL_IRIS - 1) * (x - cx), abs(a) * (SMALL_IRIS - 1) * (y - cy)))
+                a * IRIS_RANGE * (x - cx), a * IRIS_RANGE * (y - cy)))
     return reach, masks
 
 
@@ -607,8 +613,7 @@ def cheek_puff(rig, fig):
         far = PUFF * PUFF_TIMES[0] * 2 * half * out * high
         return math.copysign(far, x - mid), -(PUFF_DROP + PUFF_LOW * (1 - ease(y0, mouth_y, y))) * far
 
-    moving = [face] + [(p, m) for p, m in fig.head  # her blush and her puff marks ride on the cheek
-                       if p.semantic_role is SemanticRole.blush or LAYER_OF.get(p.id) == "fx_puff"]
+    moving = [face] + [(p, m) for p, m in fig.head if p.semantic_role is SemanticRole.blush]
     rig.parameters.append(Parameter(id="ParamCheekPuff", min=0.0, max=1.0, default=0.0, keyforms=[
         Keyform(value=0.0, mesh_offsets={p.id: author._zeros(m) for p, m in moving}),
         Keyform(value=1.0, mesh_offsets={p.id: [move(x, y) for x, y in m.vertices] for p, m in moving})]))
@@ -632,14 +637,14 @@ def pout(rig, fig):
 
 
 # Her expression marks (fx.py): a sweat drop, an anger mark, tears, sparkles in her eyes, a gloom over
-# her brow, puff marks beside her mouth. Each is a layer the build draws, on top of her head's other
+# her brow. Each is a layer the build draws, on top of her head's other
 # parts, hidden until its parameter (ParamFxSweat and so on, 0 to 1) fades it in. They are head
 # ornaments to image2live2d, which would swing each on a pendulum: that is taken out. Each turns
 # with the part of her face it sits on (FX_KINDS, read by turn_parts). The sparkles are cut off by
 # her eye whites, as her irises are, and go where her irises go (follow). The gloom is cut off by her
 # face.
 FX_KINDS = {"fx_sweat": "hair", "fx_anger": "hair", "fx_tears": "glasses", "fx_sparkle_l": "glasses",
-            "fx_sparkle_r": "glasses", "fx_gloom": "face", "fx_puff": "mouth"}
+            "fx_sparkle_r": "glasses", "fx_gloom": "face"}
 
 
 def follow(rig, part, mesh, leader, leader_mesh):

@@ -10,7 +10,6 @@ parameter fades it in (rig.py's `marks`); her expressions set them (acting.py):
   fx_sparkle_l, fx_sparkle_r
                 ParamFxSparkle   star-shaped lights in her irises, which follow them
   fx_gloom      ParamFxGloom     a blue shade over her brow with lines hanging in it
-  fx_puff       ParamFxPuff      two short curved lines beside each corner of her mouth: puffed cheeks
 
 They are placed from her eyes, as her blush is: every size is in eye widths and every place is along
 and down the line her eyes make, so a tilted face gets tilted marks. Her layers' live2d.json can
@@ -30,7 +29,7 @@ import blush as B
 
 MARKS = {"sweat": ("ParamFxSweat", ("fx_sweat",)), "anger": ("ParamFxAnger", ("fx_anger",)),
          "tears": ("ParamFxTears", ("fx_tears",)), "sparkle": ("ParamFxSparkle", ("fx_sparkle_l", "fx_sparkle_r")),
-         "gloom": ("ParamFxGloom", ("fx_gloom",)), "puff": ("ParamFxPuff", ("fx_puff",))}
+         "gloom": ("ParamFxGloom", ("fx_gloom",))}
 LAYERS = {layer: mark for mark, (_, layers) in MARKS.items() for layer in layers}
 PLAIN = {"size": 1.0, "right": 0.0, "down": 0.0}
 SHARP = 2          # drawn this many times her frame's size
@@ -43,7 +42,6 @@ TEAR = np.array([0.93, 0.97, 1.00], np.float32)  # gathered tears are nearly whi
 ANGER = np.array([0.90, 0.16, 0.22], np.float32)
 ANGER_EDGE = np.array([0.52, 0.05, 0.10], np.float32)
 GLOOM = np.array([0.20, 0.22, 0.42], np.float32)
-PUFF = np.array([0.62, 0.36, 0.38], np.float32)
 WHITE = np.ones(3, np.float32)
 
 
@@ -170,17 +168,11 @@ def her_face(images):
         pad = max(1, len(cols) // 12)
         low = np.convolve(np.pad(low.astype(float), pad, mode="edge"), np.ones(2 * pad + 1) / (2 * pad + 1), mode="valid")
         lids.append((x0 + cols.astype(float), low))
-    mouth = next((layer for layer in ("mouth_close", "mouth") if layer in images), None)
-    lips = (a + b) / 2 + down * 1.45 * wide
-    if mouth:
-        my, mx = np.nonzero(alpha(mouth) > 0.3)
-        if len(mx):
-            lips = np.array([mx.mean(), my.mean()])
     H, W = face.shape
     room = ROOM * max(box[2] - box[0], box[3] - box[1])
     cut = (max(0, int(box[0] - room)), max(0, int(box[1] - room)), min(W, int(box[2] + room)), min(H, int(box[3] + room)))
     return {"frame": (W, H), "cut": cut, "box": box, "eyes": found, "a": a, "b": b, "wide": float(wide), "along": along,
-            "down": down, "irises": irises, "lips": lips, "lids": lids}
+            "down": down, "irises": irises, "lids": lids}
 
 
 def placed(f, adjust, at):
@@ -278,18 +270,7 @@ def gloom(f, adjust):
     return {"fx_gloom": s}
 
 
-def puff(f, adjust):
-    s = Sheet(f["cut"])
-    t = np.linspace(-1, 1, 40)
-    thin = 0.5 + 0.5 * np.cos(np.pi * t / 2) ** 0.6
-    for out in (-1, 1):
-        w, c = placed(f, dict(adjust, right=adjust["right"] * out), f["lips"] + f["along"] * out * 0.62 * f["wide"])
-        for far, r, reach in ((0.0, 0.11, 55), (0.09, 0.15, 45)):  # two arcs, the outer one bigger: "((" and "))"
-            s.line(arc(c + f["along"] * out * (far - r) * w, r * w, out * f["along"], -f["down"], -reach, reach), 0.035 * w * thin, PUFF, 0.9)
-    return {"fx_puff": s}
-
-
-DRAW = {"sweat": sweat, "anger": anger, "tears": tears, "sparkle": sparkle, "gloom": gloom, "puff": puff}
+DRAW = {"sweat": sweat, "anger": anger, "tears": tears, "sparkle": sparkle, "gloom": gloom}
 
 
 def adjusted(given, mark):
