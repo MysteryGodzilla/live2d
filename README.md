@@ -12,6 +12,9 @@ afternoon. Most of that time is the PC working, not you.
 The folder is self-contained: get it once, and make your characters inside it or in any other
 project ([Another project](#another-project)). `SKILL.md` holds the same instructions for an agent.
 
+### Buy me a Taro Boba!
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K4P02AO50X)
+
 ## Contents
 - [What you need](#what-you-need)
 - [Set up once](#set-up-once)
