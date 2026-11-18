@@ -15,7 +15,58 @@ project ([Another project](#another-project)). `SKILL.md` holds the same instruc
 ### Buy me a Taro Boba!
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K4P02AO50X)
 
+## See it work
+
+Mika, one character made with this kit: the drawing it drew, the layers it cut her into, and her
+built model moving in the kit's viewer (the same renderer the apps use). Every picture here is the
+kit's own output, not a mock-up. [The steps](#the-steps) below made them, in this order.
+
+**One drawing in.** `draw` asks Qwen Image for a standing figure with a transparent background;
+`pick` keeps the one you choose. Hers came from seed 22 of one round.
+
+| Her drawing | The same, cut out (checkerboard shows the transparency) |
+|---|---|
+| ![Mika's drawing](examples/drawing.png) | ![Mika cut out](examples/cutout.png) |
+
+**Cut into layers.** `split` hands her to See-through, which cuts her into 21 layers and paints in
+what each one hides: the face under her bangs, the neck under her chin, the legs under her skirt.
+`layers check` stacks them back over her drawing and marks every pixel that differs, so a layer in
+the wrong place is a red block you can see.
+
+![Mika's 21 layers, each named](examples/layers.png)
+
+**A model that moves.** `build` rigs those layers: head, eyes, brows, mouth, body, arms and knees,
+with physics for her hair and skirt. Held poses in the viewer, face and whole:
+
+![Mika holding nine poses](examples/poses.png)
+
+And moving: a head pat (`TapHead`) and the `Happy` motion, played by the viewer's renderer.
+
+| A head pat | Happy |
+|---|---|
+| ![Mika's head pat](examples/mika-headpat.gif) | ![Mika happy](examples/mika-happy.gif) |
+
+**Her faces.** Nine expressions, held in the viewer. Each is a set of parameter values an app can
+set by name, and a character can keep her own of any of them
+([Her own expressions](#her-own-expressions)).
+
+![Mika's nine expressions](examples/expressions.png)
+
+**Mouths, blushes, irises and marks.** The kit draws these for her and lets you choose: eight open
+mouths, five blushes, twenty-four irises in any colour, and the small drawn signs of a feeling (a
+sweat drop, an anger mark, tears, sparkles, a gloom). Each sheet is her own face with the choices on
+it, numbered so you can take one by number.
+
+| Open mouths | Blushes |
+|---|---|
+| ![Mika's open mouths](examples/mouths.png) | ![Mika's blushes](examples/blushes.png) |
+
+| Irises | Expression marks |
+|---|---|
+| ![Mika's irises](examples/irises.png) | ![Mika's expression marks](examples/fx.png) |
+
 ## Contents
+- [See it work](#see-it-work)
 - [What you need](#what-you-need)
 - [Set up once](#set-up-once)
 - [The GUI](#the-gui)
@@ -776,6 +827,7 @@ live2d.py              the one command; runs each step with the Python it needs
 README.md              this file
 SKILL.md               the same, for an agent
 settings.example.json  the settings; init copies it to your project as live2d-kit.json
+examples/              one character through the steps: the pictures in "See it work"
 templates/
   looks.example.json   what each character looks like, and art styles; init copies it
   live2d.example.json  one character's own build settings (tucked, whole)
