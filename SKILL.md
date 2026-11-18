@@ -45,6 +45,9 @@ There is also a GUI for people (`live2d.py gui`: the same steps as buttons in a 
    running and who started it: this project, or another folder (then it is someone else's: use
    it, but don't stop it). `comfy stop` stops only the one this project's `comfy start` started.
    Stop yours when the drawing, cut-out and upscale steps are done.
+6. The drawing step is optional: the user may draw their character or bring art of their own, and
+   every later step works on it the same way. If the picture is someone else's work, confirm the
+   user has the artist's permission before you split, rig or publish a model from it.
 
 ## The steps, and what to check after each
 

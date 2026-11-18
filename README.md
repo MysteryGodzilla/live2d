@@ -12,6 +12,18 @@ afternoon. Most of that time is the PC working, not you.
 The folder is self-contained: get it once, and make your characters inside it or in any other
 project ([Another project](#another-project)). `SKILL.md` holds the same instructions for an agent.
 
+> **Made with respect for Live2D artists.** This kit makes a model you can use for yourself and for
+> an AI assistant. It will never replace a commissioned Live2D artist, and it is not as good as one:
+> hand-rigged meshes, deformers and an artist's eye are beyond what these scripts do. I made it
+> because I could not afford a commission for the characters I imagined, and I would commission one
+> if I could. If you can pay an artist, pay an artist; if this gets you in the door, come back and
+> commission the real model when you can. Their work is worth supporting.
+>
+> **The drawing step is optional.** You do not have to generate anything: draw your character
+> yourself, or bring art you have permission to use, and the kit still cuts it into layers, fixes
+> them and rigs it into a Live2D model. Ask the artist before you use their work — rigging or
+> publishing someone else's drawing without their yes is not what this is for.
+
 ### Buy me a Taro Boba!
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K4P02AO50X)
 
@@ -216,7 +228,9 @@ The split and the rig expect a drawing like this:
 - About 928x1664. Bigger doesn't help the split, which works at 1280.
 
 `live2d.py draw` writes its prompts this way. If you bring your own picture, check it against this
-list first. A drawing that breaks these rules can still work, but expect more fixing.
+list first. A drawing that breaks these rules can still work, but expect more fixing. Your own
+drawing is welcome here: generating one is only one way to get this picture, and hand-drawn art
+rigs the same way. Someone else's art needs their permission first.
 
 ## The steps
 
@@ -232,7 +246,8 @@ for a free 12 GB card. Another program holding part of the card makes a split pa
 one took 3.5 hours.
 
 **1. Draw candidates** (GPU: half a minute to load the model, then a few seconds a picture with
-the turbo model, or about a minute with a 20-step tuned one). Skip this if you have a drawing.
+the turbo model, or about a minute with a 20-step tuned one). Skip this if you have a drawing —
+your own, or one you have permission to use; every later step works on it the same way.
 
 ```
 python live2d.py comfy start
