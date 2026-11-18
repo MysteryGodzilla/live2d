@@ -2,14 +2,14 @@
   "characters": "characters",
   "out": "out",
   "comfyui": {
-    "python": "C:/AI/ComfyUI_windows_portable/python_embeded/python.exe",
-    "main": "C:/AI/ComfyUI_windows_portable/ComfyUI",
+    "python": "/path/to/ComfyUI/python_embeded/python.exe",
+    "main": "/path/to/ComfyUI/ComfyUI",
     "url": "http://127.0.0.1:8189",
-    "models": "C:/AI/models"
+    "models": "/path/to/models"
   },
   "seethrough": {
-    "repo": "C:/AI/see-through/repo",
-    "python": "C:/AI/see-through/venv/Scripts/python.exe",
-    "hf_home": "C:/AI/hf-cache"
+    "repo": "/path/to/see-through/repo",
+    "python": "/path/to/see-through/venv/Scripts/python.exe",
+    "hf_home": "/path/to/hf-cache"
   }
 }

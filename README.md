@@ -62,16 +62,17 @@ LoRA or a tuned model of your own is optional too ([Looks and styles](#looks-and
 go in `<models>/loras/`.
 
 Installing See-through. It gets a Python environment of its own (Python 3.12), which the kit's
-layer and build steps use too. The paths are examples, and `py -3.12` is Python 3.12 from
-python.org.
+layer and build steps use too. Run these from this folder. The paths are examples beside the kit,
+written with forward slashes and no drive letter (`../see-through` is a folder next to this one),
+and `py -3.12` is Python 3.12 from python.org.
 
 ```
-git clone https://github.com/shitagaki-lab/see-through C:/AI/see-through/repo
-git -C C:/AI/see-through/repo checkout df019de
-py -3.12 -m venv C:/AI/see-through/venv
-C:/AI/see-through/venv/Scripts/pip install torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128 --index-url https://download.pytorch.org/whl/cu128
-C:/AI/see-through/venv/Scripts/pip install -r C:/AI/see-through/repo/requirements.txt -r C:/AI/see-through/repo/requirements-inference-bnb.txt
-C:/AI/see-through/venv/Scripts/pip install psd-tools scipy pydantic
+git clone https://github.com/shitagaki-lab/see-through ../see-through/repo
+git -C ../see-through/repo checkout df019de
+py -3.12 -m venv ../see-through/venv
+../see-through/venv/Scripts/pip install torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+../see-through/venv/Scripts/pip install -r ../see-through/repo/requirements.txt -r ../see-through/repo/requirements-inference-bnb.txt
+../see-through/venv/Scripts/pip install psd-tools scipy pydantic
 ```
 
 The second requirements file lets it run on a 12 GB card. The last line is what the kit's own
@@ -95,7 +96,8 @@ second tool to install for it and nothing to keep in step.
    characters in another project's folder instead, see [Another project](#another-project).
 
    It makes three files, each only if it isn't there yet:
-   - `live2d-kit.json`, the settings (a copy of `settings.example.json`). Put your own paths in it.
+   - `live2d-kit.json`, the settings (a copy of `settings.example.json`). Put your own paths in it:
+     each one from the root of your disk, since the steps use what you write as it is.
      `characters` is the folder that will hold one folder per character. `out` is a folder for
      everything the kit makes that you don't keep.
    - `<characters>/looks.json`, where you write what each character looks like
@@ -114,8 +116,9 @@ second tool to install for it and nothing to keep in step.
    It lists each program and model as `ok` or `MISSING`, and says which step needs it.
 
 Every command in this file is run the same way: `python live2d.py <step> ...`, from the project's
-folder. In another project it is the same command with the kit's path, such as
-`python C:/tools/live2d/live2d.py <step> ...`. `live2d.py` picks the right Python for each step
+folder. In another project it is the same command with the kit's path in front of it, such as
+`python ../live2d/live2d.py <step> ...` when the kit is the folder beside your project.
+`live2d.py` picks the right Python for each step
 and prints the command it runs, so you can see what happened and run a script by hand if you
 want to.
 
@@ -747,10 +750,12 @@ The kit works on whichever project you run it from: the folder with `live2d-kit.
 copy of the kit can serve any number of projects, and it doesn't have to be inside any of them.
 
 1. In the other project's top folder, run the kit's `init` by its path:
-   `python C:/tools/live2d/live2d.py init --like C:/tools/live2d`. `--like` copies the tools' paths
+   `python ../live2d/live2d.py init --like ../live2d`, when the kit is the folder beside your
+   project (write its own path in place of `../live2d` if you keep it elsewhere).
+   `--like` copies the tools' paths
    from a project that already has them (here, the kit's own folder). It also makes that project's
    looks file and a pointer to the skill ([Set up once](#set-up-once)).
-2. Run `python C:/tools/live2d/live2d.py check` there.
+2. Run `python ../live2d/live2d.py check` there.
 3. From then on run every step from that project the same way. Its characters and output stay in
    it; the kit's folder isn't touched.
 

@@ -11,10 +11,11 @@ the result of each one, and fix what is off before the next step builds on it. A
 through early (a layer in the wrong place) shows up later as something much harder to trace (a leg
 behind a coat).
 
-Everything is one command, run from inside the project:
+Everything is one command, run from inside the project. `<kit>` below is this folder, or the folder
+the kit lives in when it sits beside the project (`../live2d`):
 
 ```
-python <this folder>/live2d.py <step> <name> ...
+python <kit>/live2d.py <step> <name> ...
 ```
 
 `<name>` is the character's folder name. `live2d.py` picks the Python each step needs and prints
