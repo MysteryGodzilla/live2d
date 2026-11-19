@@ -121,18 +121,24 @@ _mouth_form = author._mouth_form
 
 def mouth_form(param_id, group, *, mouth_lm=None):
     param = _mouth_form(param_id, group, mouth_lm=mouth_lm)
-    if not CAVITY or not group:
-        return param
-    if mouth_lm is not None:  # the same measures image2live2d took for her closed line
-        cx, half, height = mouth_lm.center[0], max(mouth_lm.width / 2, 1e-6), max(mouth_lm.height, 1e-6)
-    else:
-        x0, y0, x1, y1 = author._bbox([v for _, m in group for v in m.vertices])
-        cx, half, height = (x0 + x1) / 2, max((x1 - x0) / 2, 1e-6), y1 - y0
+    # The lift image2live2d scales by a mouth HEIGHT: a landmark's box, or the part's mesh box, which
+    # a sharp copy or a stray speck can inflate far past the drawn line. A closed mouth is a line a
+    # few pixels thick, so a lift deeper than that folds it into a chevron as deep as it is wide —
+    # five of the nine expressions and both taps scribbled (first user's run, 2026-11-19). Rewrite
+    # every mouth part's lift from its own drawn pixels: her closed line and her pout by a share of
+    # the line's thickness, an open cavity by a tenth of its width, on a square ramp so the corners
+    # curve up and the middle stays, instead of a straight fold.
     for key in param.keyforms:
         sign = 0.0 if key.value == 0 else math.copysign(1.0, key.value)
-        for pid, m in CAVITY:
-            key.mesh_offsets[pid] = [(0.0, sign * min(author._MOUTH_FORM * height * min(abs(x - cx) / half, 1.2),
-                                                       author._MOUTH_CAP)) for x, _ in m.vertices]
+        for pid, m in list(group) + CAVITY:
+            drawn = DRAWN.get(pid)
+            x0, y0, x1, y1 = drawn or author._bbox(m.vertices)
+            mx0, _, mx1, _ = author._bbox(m.vertices)
+            cx, half = (mx0 + mx1) / 2, max((mx1 - mx0) / 2, 1e-6)
+            cavity = LAYER_OF.get(pid) in ("mouth_open", "mouth_oh")
+            lift = 0.10 * (x1 - x0) if cavity else 0.6 * (y1 - y0)
+            key.mesh_offsets[pid] = [(0.0, sign * lift * min(abs(x - cx) / half, 1.2) ** 2)
+                                     for x, _ in m.vertices]
     return param
 
 
@@ -340,7 +346,7 @@ SHARP = {}  # ... -> its picture at the head pass's own size, and the box of her
 # which of the copy's pixels are this part's (a left eye, not the right; nothing the cleaning took
 # out), and a copy that no longer matches its layer, shrunk, isn't used (the layer was edited
 # since).
-SHARP_SAME = 0.08  # a sharp copy this close to its part (0 to 1, on average, over the part) still matches it:
+SHARP_SAME = kit.SHARP_SAME  # a sharp copy this close to its part (0 to 1, on average, over the part) still matches it:
                    # a mouth or nose of a few dozen pixels measures 0.06 as taken, a layer from another pass far more
 
 # Her head, straight: a drawing often has her head a little to one side (9.6 degrees on one
