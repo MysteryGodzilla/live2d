@@ -50,6 +50,13 @@ def see_through(picture, stem):
     if os.path.exists(made):
         os.remove(made)
     env = dict(os.environ, PYTHONUTF8="1")
+    # httpx parses every NO_PROXY entry as a URL pattern while its client is being built, and a
+    # bracketed IPv6 entry ("[::1]", as Windows ships) is invalid to it: huggingface_hub then crashes
+    # before HF_HUB_OFFLINE below can take effect, and the split dies in a minute with a port error
+    # (a run of this kit, 2026-11-19). Keep the entry, without its brackets.
+    for key in ("NO_PROXY", "no_proxy"):
+        if env.get(key):
+            env[key] = ",".join(dict.fromkeys(p.strip().strip("[]") for p in env[key].split(",") if p.strip()))
     home = kit.settings()["seethrough"].get("hf_home")
     if home:
         env["HF_HOME"] = home

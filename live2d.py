@@ -338,10 +338,28 @@ def status(name):
     print(f"next: {d['next']}")
 
 
+def help_of(step):
+    """A step's own help: its script's docstring, which is where its flags are written down."""
+    script = {"comfy": "comfy.py", "draw": "draw.py", "cutout": "cutout.py", "upscale": "upscale.py",
+              "split": "split.py", "layers": "layers.py", "parts": "parts.py", "build": "rig.py",
+              "view": "view.py", "gui": "gui.py", "acting": "acting.py"}.get(step)
+    if script:
+        import ast
+        with open(os.path.join(HERE, "scripts", script), encoding="utf-8") as f:
+            return ast.get_docstring(ast.parse(f.read())) or __doc__
+    return __doc__
+
+
 def main(args):
     if not args:
         sys.exit(__doc__)
     step, rest = args[0], args[1:]
+    # --help anywhere in a step's arguments is a question, not a character name: half the subcommands
+    # used to take it as one and die on a missing layers.json (a run of this kit, 2026-11-19).
+    if step in ("-h", "--help"):
+        sys.exit(__doc__)
+    if any(a in ("-h", "--help") for a in rest):
+        sys.exit(help_of(step))
     if step == "init" and (not rest or (len(rest) == 2 and rest[0] == "--like")):
         init(*rest[1:])
     elif step == "check" and not rest:
