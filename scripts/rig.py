@@ -623,7 +623,12 @@ def cheek_puff(rig, fig):
 # her lips for ParamMouthOpenY, so it gives way to her open mouth as her closed mouth does, and she
 # can talk through a sulk. A smile or frown (ParamMouthForm) leaves it as drawn.
 def pout(rig, fig):
-    shut = [p for p, _ in fig.drawn if LAYER_OF.get(p.id) == "mouth_close"]
+    # Her closed line by role, not by LAYER_OF: image2live2d halves it into <n>_mouth_l and _r, and
+    # those two ids have no layer entry, so a name lookup finds nothing and the swap hides only the
+    # pout, leaving her closed mouth drawn over it (first user, 2026-11-19). The pout itself is one
+    # part and keeps its layer entry; everything else with the mouth role is her closed line.
+    shut = [p for p, _ in fig.drawn
+            if p.semantic_role is SemanticRole.mouth and LAYER_OF.get(p.id) != "mouth_pout"]
     pouts = [p for p, _ in fig.drawn if LAYER_OF.get(p.id) == "mouth_pout"]
     if not pouts or by_id(rig, "ParamMouthPout") is not None:
         return

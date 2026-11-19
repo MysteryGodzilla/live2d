@@ -53,6 +53,7 @@ class Sheet:
         self.x0, self.y0, x1, y1 = box
         self.w, self.h = (x1 - self.x0) * SHARP, (y1 - self.y0) * SHARP
         self.rgba = np.zeros((self.h, self.w, 4), np.float32)
+        self.floor = B.FLOOR  # a mark with a long soft tail lowers this, so its fade is not cut off
 
     def local(self, pts):
         return (np.asarray(pts, np.float32) - (self.x0, self.y0)) * SHARP
@@ -94,7 +95,7 @@ class Sheet:
 
     def pictures(self, frame):
         """(her frame's layer, the sharp copy, its corner in her frame, a pixel of it in hers)."""
-        self.rgba[self.rgba[..., 3] < B.FLOOR] = 0
+        self.rgba[self.rgba[..., 3] < self.floor] = 0
         sharp = B.as_image(self.rgba)
         small = sharp.convert("RGBa").reduce(SHARP).convert("RGBA")
         whole = Image.new("RGBA", frame, (0, 0, 0, 0))
@@ -250,20 +251,21 @@ def sparkle(f, adjust):
 
 def gloom(f, adjust):
     s = Sheet(f["cut"])
+    s.floor = 1 / 255  # its tail fades over bare skin: at the usual floor the last step showed as a line
     x0, y0, x1, y1 = f["box"]
     wide = f["wide"]
-    # The shade is gone at her eyes' lower edge: its last faint step is lost in her lashes there, where
-    # on her bare cheek it showed as a line.
-    low = max(e[3] for e in f["eyes"]) + (0.08 + adjust["down"]) * wide
+    # The shade carries over her whole eye and fades out on the cheek below it, as the trope draws it.
+    # Stopping at her lashes left its last step as a straight cut across her face (first user, 2026-11-19).
+    low = max(e[3] for e in f["eyes"]) + (0.35 + adjust["down"]) * wide
     soft = 0.12 * (x1 - x0)  # it comes in softly at the top and the sides: no edge where her face's layer ends
-    s.shade(lambda x, y: 0.45 * adjust["size"] * ease((y - y0) / (0.3 * max(low - y0, 1))) * (1 - ease((y - y0) / max(low - y0, 1)))
+    s.shade(lambda x, y: 0.55 * adjust["size"] * ease((y - y0) / (0.22 * max(low - y0, 1))) * (1 - ease((y - y0) / max(low - y0, 1)))
             * ease((x - x0) / soft) * ease((x1 - x) / soft) * 1.6, GLOOM)
     brow = min(e[1] for e in f["eyes"])
-    middle = (f["a"][1] + f["b"][1]) / 2
+    bottom = sum(e[3] for e in f["eyes"]) / len(f["eyes"])
     for i in range(9):  # lines hanging from the top of her face, each its own length
         x = x0 + (0.14 + 0.72 * i / 8) * (x1 - x0)
         top = y0 + 0.12 * (brow - y0)
-        long = (middle - top) * (0.6 + 0.4 * ((i * 0.618) % 1))  # none reaches past the middle of her eyes
+        long = (bottom - top) * (0.6 + 0.4 * ((i * 0.618) % 1))  # the longest reach her eyes' lower edge
         u = np.linspace(0, 1, 30)
         s.line(np.stack([np.full_like(u, x), top + u * long], 1), 0.05 * wide * adjust["size"] * np.sin(np.pi * (0.15 + 0.85 * u)) ** 0.7,
                GLOOM, 0.72)
