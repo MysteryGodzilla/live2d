@@ -111,7 +111,12 @@ def main_colour(rgb):
     peak = (np.argmax(counts) + 0.5) / 36
     w = w * (np.abs((h - peak + 0.5) % 1 - 0.5) < 0.09)
     turn = np.arctan2((w * np.sin(2 * np.pi * h)).sum(), (w * np.cos(2 * np.pi * h)).sum()) / (2 * np.pi) % 1
-    return float(turn), float((w * s).sum() / w.sum()), float((w * v).sum() / w.sum())
+    # Her shine, and any pale skin caught in the cut, are nearly white: little hue weight, but they
+    # still drag the saturation and value means toward pastel, which washed an amber iris to salmon
+    # under --colour hers (a run of this kit, 2026-11-19). Only colourful pixels answer for those two.
+    solid = w * (s > 0.25)
+    base = solid if solid.sum() > 1e-6 else w
+    return float(turn), float((base * s).sum() / base.sum()), float((base * v).sum() / base.sum())
 
 
 def tinted(rgb, colour):

@@ -25,6 +25,11 @@ live2d-kit.json (see settings.example.json beside the kit's README):
 import json, os, sys
 
 FILE = "live2d-kit.json"
+SHARP_SAME = 0.08  # a sharp head copy this close to its layer (0 to 1, on average, over the part) still
+                   # matches it: a mouth or nose of a few dozen pixels measures 0.06 as taken, a layer
+                   # from another pass far more. One number for both keeping a copy (layers.py) and
+                   # using it (rig.py): two thresholds let the documented `layers sharp` remedy
+                   # quietly downgrade a good model (a run of this kit, 2026-11-19).
 DEFAULTS = {
     "characters": "characters",
     "out": "out",

@@ -597,7 +597,7 @@ HEAD = {"back hair", "front hair", "face", "ears", "eyebrow", "eyelash", "eyewhi
 # of her frame's pixels one of its pixels is}}). Her layers stay the truth: the build uses a sharp
 # copy only while it still matches its layer, so an edit to a layer simply switches its copy off.
 SHARP = "sharp.json"
-SHARP_SAME = 0.03  # sharp: a head layer this close to the head pass's (0 to 1, on average) is as it was taken
+SHARP_SAME = kit.SHARP_SAME  # sharp: a head layer this close to the head pass's (0 to 1, on average) is as it was taken
 
 
 def sharp_path(name, layer):
@@ -740,9 +740,11 @@ def do_head(name, psd_path, crop_path):
     psd = PSDImage.open(psd_path)
     size, at, (cx0, cy0, cx1, cy1), m = head_placing(name, info, psd, crop)
     order, taken, left, kept, sharp = info["order"], [], [], [], load_sharp(name)
+    seen = set()
     for layer in psd:
         if layer.name not in HEAD:
             continue
+        seen.add(layer.name)
         target = "mouth_close" if layer.name == "mouth" and "mouth_close" in order else layer.name
         if target not in order:
             left.append(layer.name)
@@ -775,6 +777,13 @@ def do_head(name, psd_path, crop_path):
         print(f"  reach out of the cut, kept from the whole-body pass: {', '.join(kept)}")
     if left:
         print(f"  not in her layers, left out: {', '.join(left)}")
+    # A head name the PSD simply lacks used to pass in silence, leaving her face at the whole-body
+    # pass's size while the step said nothing (a run of this kit, 2026-11-19). Name it.
+    absent = sorted({("mouth" if t == "mouth_close" else t) for t in order
+                     if ("mouth" if t == "mouth_close" else t) in HEAD} - seen)
+    if absent:
+        print(f"  the head PSD has no {', '.join(absent)}: kept from the whole-body pass, so close up "
+              f"{'it stays' if len(absent) == 1 else 'they stay'} at that pass's softness")
     if gone:
         print(f"  removed {', '.join(gone)}: run parts.py closed-eyes {name}, then parts.py mouth {name}")
 
