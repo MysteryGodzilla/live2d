@@ -164,7 +164,8 @@ second tool to install for it and nothing to keep in step.
      `characters` is the folder that will hold one folder per character. `out` is a folder for
      everything the kit makes that you don't keep.
    - `<characters>/looks.json`, where you write what each character looks like
-     ([Looks and styles](#looks-and-styles)). It starts with one example character.
+     ([Looks and styles](#looks-and-styles)). It starts with one example character, mika: a look the
+     kit has been tested with, there to be written over.
    - `.claude/skills/live2d-from-drawing/SKILL.md`, a pointer, so an agent working in the project
      finds the kit's skill.
 
@@ -270,8 +271,11 @@ away. The contact sheet shows them on grey. `--background` draws on plain light 
 **2. Pick one.**
 
 ```
-python live2d.py pick akane <out>/akane-round1/akane-round1-3.png
+python live2d.py pick akane <out>/akane-round1/akane-3.png
 ```
+
+A round's pictures are named `<name>-<seed>.png` in the round's folder (`mika-1.png` … `mika-4.png`
+for four seeds), not after the round; `prompts.txt` beside them says which seed is which.
 
 It becomes `<characters>/akane/full/base.png`. Beside it, `base.json` keeps the prompt, seed and
 model it was drawn with, so you can draw her again or draw a change to her later.
@@ -397,7 +401,8 @@ python live2d.py view
 
 Open `http://127.0.0.1:8777/live2d/`. [Trying her model](#trying-her-model) says what to look for.
 When something looks wrong, `references/problems.md` lists what we have seen and how each was
-fixed. Fix, build again, reload the page.
+fixed. Fix, build again, reload the page. Ctrl+C stops the viewer in its terminal; an agent stops it
+by killing the process listening on port 8777 (there is no `view stop`).
 
 Keep these in version control: `full/base.png`, `full/cutout.png`, `full/base-2x.png`, and all of
 `layers/full/`. Everything in `<out>` can be made again.
@@ -672,6 +677,13 @@ All of these are `python live2d.py layers <command> <name> ...`. Each one writes
 it did into her `layers.json`, so the history of her layers is kept. Run `layers check` again
 after each fix.
 
+Two things about her pictures, for anyone making or mending a layer by hand. `split` body works on
+`full/base.png`, her drawing on light grey (`cutout.png` is the same with the background gone);
+`split` head works on the four-times picture `upscale` leaves in `<out>/upscale/`. `base-2x.png` is
+the kept twice-size drawing. Her layers live on a SQUARE frame (1280x1280 until `layers scale`
+doubles it), her drawing scaled to the frame's height and centred in it — so a layer PNG of your own
+for `layers add` must be on that frame, not on her drawing's own size.
+
 | You see | Do |
 |---|---|
 | A layer covers something it shouldn't, or misses a bit of itself | `layers repair <name> <layer> ...`. Start with `handwear topwear bottomwear` |
@@ -713,7 +725,8 @@ Go through this list for each new character:
    shape, her glasses stay on her eyes, no second jaw line shows.
 3. `EyeLOpen` and `EyeROpen` to 0.5 and to 0: solid half-shut lids, then her drawn closed eyes.
 4. `EyeBallX` and `EyeBallY` to both ends: both irises move together and stay inside her eyes.
-5. `MouthOpenY` to 1: her open mouth shows.
+5. `MouthOpenY` to 1: her open mouth shows. `MouthForm` to 1 and to -1 with her mouth closed: a smile
+   and a frown of her drawn line, not a fold or a scribble (most expressions move it).
 6. `BodyAngleX`, `BodyAngleY`, `BodyAngleZ`: her feet stay on the floor and nothing comes apart.
    Check her waist on a light background.
 7. `ArmLA`, `ArmLB`, `ArmRA`, `ArmRB`: arms lift and bend at the elbow without tearing. A forearm
@@ -747,7 +760,8 @@ Every model the kit builds has the same names, so an app's settings and prompts 
 - **`ParamMouthO`,** if she has an "O" mouth (`parts mouth-oh`): 1 shows it in place of her open
   mouth.
 - **Reactions to a click:** `TapHead` (a head pat: eyes shut in a "^", blushing, a wavering smile) and
-  `TapBody` (a poke: a flinch, then a pout). AIRI plays these by name.
+  `TapBody` (a poke: a flinch, then her closed mouth turned down in a sulk — her pout mouth is the
+  `pouting` expression's, not this one's). AIRI plays these by name.
 
 ## Changing how she moves
 
