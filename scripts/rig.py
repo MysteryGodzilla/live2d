@@ -128,14 +128,24 @@ def mouth_form(param_id, group, *, mouth_lm=None):
     # every mouth part's lift from its own drawn pixels: her closed line and her pout by a share of
     # the line's thickness, an open cavity by a tenth of its width, on a square ramp so the corners
     # curve up and the middle stays, instead of a straight fold.
+    # image2live2d may cut her closed line into <n>_mouth_l and <n>_mouth_r. Measured half by half,
+    # each half curled up at its own inner end too, so a smile read as two little U's side by side
+    # (one character's run, 2026-11-21). The halves of one layer share the ramp of the whole line,
+    # and its drawn box, which is kept under the layer's own id.
+    whole = lambda pid: pid[:-2] if pid.endswith(("_l", "_r")) else pid
+    spans = {}
+    for pid, m in list(group) + CAVITY:
+        mx0, _, mx1, _ = author._bbox(m.vertices)
+        a, b = spans.get(whole(pid), (mx0, mx1))
+        spans[whole(pid)] = (min(a, mx0), max(b, mx1))
     for key in param.keyforms:
         sign = 0.0 if key.value == 0 else math.copysign(1.0, key.value)
         for pid, m in list(group) + CAVITY:
-            drawn = DRAWN.get(pid)
+            drawn = DRAWN.get(pid) or DRAWN.get(whole(pid))
             x0, y0, x1, y1 = drawn or author._bbox(m.vertices)
-            mx0, _, mx1, _ = author._bbox(m.vertices)
+            mx0, mx1 = spans[whole(pid)]
             cx, half = (mx0 + mx1) / 2, max((mx1 - mx0) / 2, 1e-6)
-            cavity = LAYER_OF.get(pid) in ("mouth_open", "mouth_oh")
+            cavity = LAYER_OF.get(pid, LAYER_OF.get(whole(pid))) in ("mouth_open", "mouth_oh")
             lift = 0.10 * (x1 - x0) if cavity else 0.6 * (y1 - y0)
             key.mesh_offsets[pid] = [(0.0, sign * lift * min(abs(x - cx) / half, 1.2) ** 2)
                                      for x, _ in m.vertices]
