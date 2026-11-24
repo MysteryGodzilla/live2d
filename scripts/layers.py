@@ -47,6 +47,21 @@ psd-tools (MIT), numpy and scipy:
       below her face and the layers the head pass gave are left as they are. `head` runs this
       itself; run it for a character whose head layers were taken before it did, then `build`.
       Running it again changes nothing
+  redraw <name> <layer> --under <layer>[,<layer>...] [--prompt "<what to change>"] [--seed <n>]
+      what the layers named hide of <layer>, drawn again with Qwen Image 2.1's edit. See-through
+      makes that part up, and scale colours the drawing's line along their edge into it: a
+      cardigan under long hair shows the strands' outlines once the hair swings, thighs under a
+      skirt its hem line and another shade of skin. Her layer is shown to the model alone on grey;
+      only that part, a thin band round it and the slits See-through cut along the line are drawn
+      again, and only they are kept. Her layer's own alpha stays, so what is clear round her stays
+      clear, and the outer half of the line along the edge of the layer over it moves onto that
+      layer's soft edge, so she is as drawn at rest and the line swings with the hair or skirt it
+      belongs to. The prompt says what to change, in plain colour words for this layer ("Remove
+      the thin dark lines that run down the cream cardigan on both sides, and fill them with the
+      same cream colour and soft shading around them."; "knitted" drew a knit texture); without
+      one it asks for stray lines, seams and gaps to go. A before-and-after picture and the layers
+      as they were go to <out>/redraw/. It needs ComfyUI running (`live2d.py comfy start`) and the
+      GPU to itself; then `build`
   strays <name> <layer>
       cut a layer below anything the drawing shows of it (faded out a little below that): See-through
       hangs strands of back hair down a character's back that her drawing never has, and they
@@ -96,7 +111,7 @@ height, centred), with the background where her idle sprite's cut-out is clear.
 in <characters>/akane/layers/working/, its drawing sprites/white/working.png and its cut-out
 sprites/working.png. For her full-size drawing, akane/full, the drawing is full/base-2x.png if
 there is one (upscale.py), else full/base.png, and the cut-out full/cutout.png."""
-import datetime, json, os, sys
+import datetime, io, json, os, shutil, sys
 
 import numpy as np
 from PIL import Image
@@ -126,6 +141,15 @@ SEAM_NEAR = 0.02   # seams: what round her face is looked at, as a share of the 
 SEAM_EDGE = 0.006  # seams: as a share of the frame, how far a soft edge looks for its own layer's solid colour,
                    # and how far out her face's soft edge reaches
 SEAM_FAINT = 0.02  # seams: alpha under this is no part of a layer
+REDRAW_BAND = 0.004  # redraw: as a share of the frame, how far out from the edge of what lies over her layer it
+                     # redraws too: scale coloured the drawing's line along that edge into her layer just there
+REDRAW_PAD = 0.03    # redraw: how much of her layer round that part the model sees, as a share of the frame
+REDRAW_SIZE = 1024   # redraw: the picture sent is about this many pixels square, at multiples of 32: the size
+                     # Qwen Image 2.1 edits at (it brings a picture to about this size anyway)
+REDRAW_GREY = 0.5    # redraw: the flat background her layer is shown on; none of it is kept
+REDRAW_SAY = "{change} Keep everything else exactly the same, including the plain grey background."
+REDRAW_CHANGE = ("Remove the stray dark lines, seams and narrow gaps across it, and fill them in with the same "
+                 "colour and soft shading as round them.")
 
 # Layers the rig shows only with her eyes shut, her mouth open or her cheeks flushed (parts.py
 # makes them): the drawing has her eyes open, mouth shut and no blush, so check and repair leave
@@ -426,6 +450,127 @@ def do_under(name, layer, over):
     save(name, info)
     print(f"{name}: {layer} under {over}: {n} px painted" + (f"; {int(odd.sum())} columns found another colour just "
                                                             "below and took the columns' beside them" if odd.any() else ""))
+
+
+def do_redraw(name, layer, overs, change, seed):
+    import comfy, draw
+    info = load(name)
+    for x in [layer] + overs:
+        if x not in info["order"]:
+            sys.exit(f"{x}: no such layer; there are {', '.join(info['order'])}")
+        if x != layer and info["order"].index(x) < info["order"].index(layer):
+            sys.exit(f"{x} is below {layer}: redraw is for what the layers over it hide")
+    if layer in load_sharp(name):
+        sys.exit(f"{layer} came from the head pass and has a sharp copy: redraw is for her whole-body layers")
+    im = read_part(name, layer)
+    H, W = im.shape[:2]
+    a = im[..., 3]
+    cover = np.zeros((H, W), bool)
+    for x in overs:
+        cover |= read_part(name, x)[..., 3] > SOLID
+    solid = a > SOLID
+    reach = max(2, round(REDRAW_BAND * H))
+    # What to redraw: what the layers over it hide of it, and a band round that, where scale coloured
+    # the drawing's line along their edge into it. See-through also cuts thin slits out of a layer
+    # along such a line, which show the background through it: those are filled, and become part of it.
+    near = ndimage.distance_transform_edt(~cover) <= reach
+    shut = ndimage.binary_closing(np.pad(solid, 2 * reach), iterations=max(1, reach // 2))[2 * reach:-2 * reach, 2 * reach:-2 * reach]
+    holes = (ndimage.binary_fill_holes(solid) | shut) & ~solid & ndimage.binary_dilation(cover, iterations=reach)
+    mine = solid | holes
+    region = ndimage.binary_opening(near & mine, iterations=1) | holes
+    if region.sum() < SPOT:
+        sys.exit(f"{', '.join(overs)} hide{'s' if len(overs) == 1 else ''} nothing of {layer}: nothing to redraw")
+    ys, xs = np.nonzero(region)
+    pad = round(REDRAW_PAD * H)
+    x0, x1, y0, y1 = max(xs.min() - pad, 0), min(xs.max() + pad + 1, W), max(ys.min() - pad, 0), min(ys.max() + pad + 1, H)
+    cw, ch = x1 - x0, y1 - y0
+    k = REDRAW_SIZE / (cw * ch) ** 0.5
+    size = (max(32, round(cw * k / 32) * 32), max(32, round(ch * k / 32) * 32))
+    # The picture: her layer alone on flat grey, its gaps shown as part of it. Its alpha marks what
+    # may change (ComfyUI's LoadImage gives 1 - alpha as the mask), a few pixels wider than what is
+    # kept, so what is kept meets what the model drew round it. Colour and mask are resized apart:
+    # PIL resizes RGBA premultiplied, which blacks out the colour under a clear pixel, and the model
+    # then draws black there (2026-11-25).
+    shown = np.where(mine, 1.0, a)[..., None]
+    picture = (im[..., :3] * shown + REDRAW_GREY * (1 - shown))[y0:y1, x0:x1]
+    may = ~ndimage.binary_dilation(region, iterations=3)[y0:y1, x0:x1]
+    src = Image.fromarray((np.clip(picture, 0, 1) * 255).round().astype(np.uint8), "RGB").resize(size, Image.LANCZOS)
+    src.putalpha(Image.fromarray(may.astype(np.uint8) * 255, "L").resize(size, Image.LANCZOS))
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    keep = kit.out("redraw", f"{slug(name)}-{layer.replace(' ', '-')}-{stamp}")
+    os.makedirs(keep, exist_ok=True)
+    before = os.path.join(keep, "before.png")
+    Image.fromarray(np.clip(im * 255, 0, 255).round().astype(np.uint8), "RGBA").save(before)
+    for o in overs:  # their edges may change too (below)
+        shutil.copyfile(part_path(name, o), os.path.join(keep, f"{o} before.png"))
+    src.save(os.path.join(keep, "sent.png"))
+    # Qwen Image 2.1's edit, starting from the picture itself under a noise mask: only the masked
+    # part is drawn again, the rest is held as it is. (The latent the edit node gives is an empty
+    # one of the picture's size: masked, that drew black.)
+    prompt = REDRAW_SAY.format(change=change or REDRAW_CHANGE)
+    wf, extra = draw.workflow(prompt, seed, size, source=os.path.join(keep, "sent.png"))
+    wf["13"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["11", 0], "vae": ["3", 0]}}
+    wf["12"] = {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["13", 0], "mask": ["11", 1]}}
+    wf["6"]["inputs"]["latent_image"] = ["12", 0]
+    print(f"{name}: redrawing {layer} under {', '.join(overs)}: {int(region.sum())} px, sent as {size[0]}x{size[1]}, seed {seed}\n"
+          f"  prompt: {prompt}", flush=True)
+    png = draw.Local().picture(wf, extra, f"{layer} redrawn")
+    open(os.path.join(keep, "got.png"), "wb").write(png)
+    got = Image.open(io.BytesIO(png)).convert("RGB").resize((cw, ch), Image.LANCZOS)
+    got = np.asarray(got, np.float32) / 255
+    # Only the part found is kept, its edge feathered over a pixel. Its alpha is her layer's own
+    # (so the background round her stays clear), solid inside it, where the gaps and their soft
+    # rims were.
+    soft = np.maximum(ndimage.gaussian_filter(region.astype(np.float32), 1.0), region)[y0:y1, x0:x1, None]
+    new = im.copy()
+    new[y0:y1, x0:x1, :3] = got * soft + im[y0:y1, x0:x1, :3] * (1 - soft)
+    new[..., 3] = np.where(ndimage.binary_erosion(mine, iterations=1) & region, 1.0, a)
+    write_part(name, layer, new)
+    # As she stands she stays the drawing. The band held the outer half of the line along the edge of
+    # what lies over her layer (scale coloured it in there, under that layer's soft edge); redrawn, the
+    # line came out thinner at rest (924 px of one character's hair outline, 2026-11-25). That half now
+    # goes with the layer it belongs to: its soft edge there is given its own colour (its nearest solid
+    # pixel's) at the alpha that puts it over what is now below back to the drawing's colour. So the
+    # line swings with the hair or the skirt, and nothing is left behind on her layer.
+    orig, _ = drawing(name, info["frame"])
+    shown = [x for x in info["order"] if x not in SHUT]
+    stack = [[x, new if x == layer else read_part(name, x)] for x in shown]
+    edged, sharp = [], load_sharp(name)
+    for o in sorted(overs, key=shown.index):
+        if o in sharp:  # editing a head-pass layer would switch off its sharp copy: its line stays where it is
+            print(f"  {o} came from the head pass: the outer half of its line stays on {layer}")
+            continue
+        i = shown.index(o)
+        ov = stack[i][1]
+        solid_o = ov[..., 3] > SOLID
+        dist, (iy, ix) = ndimage.distance_transform_edt(~solid_o, return_indices=True)
+        band = region & ~cover & (dist > 0) & (dist <= 2 * reach)
+        if not band.any():
+            continue
+        below, _ = composite(stack[:i])
+        mine_c = ov[..., :3][iy, ix]
+        step = mine_c - below
+        alpha = np.clip(((orig - below) * step).sum(axis=2) / np.maximum((step ** 2).sum(axis=2), 1e-6), 0, 1)
+        more = band & (alpha > ov[..., 3]) & (np.abs(step).max(axis=2) > MATCH)
+        if more.any():
+            ov[..., :3][more] = mine_c[more]
+            ov[..., 3][more] = alpha[more]
+            stack[i][1] = ov
+            write_part(name, o, ov)
+            edged.append(f"{o}'s edge ({int(more.sum())} px)")
+
+    def on_grey(x):
+        return x[..., :3] * x[..., 3:] + REDRAW_GREY * (1 - x[..., 3:])
+    Image.fromarray((np.clip(np.concatenate([on_grey(im)[y0:y1, x0:x1], on_grey(new)[y0:y1, x0:x1]], axis=1), 0, 1) * 255)
+                    .astype(np.uint8)).save(os.path.join(keep, "compare.png"))
+    note(info, f"{layer} redrawn under {', '.join(overs)} with Qwen Image 2.1, seed {seed} ({int(region.sum())} px): "
+               f"\"{change or REDRAW_CHANGE}\"" + (f"; the line along it moved onto {', '.join(edged)}" if edged else "")
+               + f"; as it was: {os.path.relpath(before, ROOT)}")
+    save(name, info)
+    print(f"{name}: {layer} redrawn ({int(region.sum())} px)" + (f", the line along it moved onto {', '.join(edged)}" if edged else "")
+          + f". Before and after: {os.path.join(keep, 'compare.png')}; "
+          f"the layers as they were: {keep} (before.png is {layer}; copy them back into {os.path.dirname(part_path(name, layer))} "
+          f"to undo). Then `build`")
 
 
 def alien(mask, orig, mine, reach):
@@ -1100,6 +1245,11 @@ def main(args):
         do_under(name, rest[0], rest[1])
     elif cmd == "seams" and not rest:
         do_seams(name)
+    elif cmd == "redraw" and len(rest) >= 3 and rest[1] == "--under":
+        given = dict(zip(rest[3::2], rest[4::2]))
+        if len(rest[3:]) % 2 or set(given) - {"--prompt", "--seed"}:
+            sys.exit(__doc__)
+        do_redraw(name, rest[0], [x.strip() for x in rest[2].split(",")], given.get("--prompt", ""), int(given.get("--seed", 1)))
     elif cmd == "strays" and len(rest) == 1:
         do_strays(name, rest[0])
     elif cmd == "check" and not rest:

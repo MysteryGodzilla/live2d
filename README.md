@@ -700,7 +700,26 @@ for `layers add` must be on that frame, not on her drawing's own size.
 | Hair hanging down her back that her drawing doesn't have, which swings out as she moves | `layers strays <name> "back hair"` |
 | A layer in the wrong order (her skirt should be over her shirt) | `layers move <name> <layer> --above <layer>` |
 | A layer See-through made but left out | `layers add <name> <layer> <file.png> --above <layer>` |
+| Lines, slits or another shade on a part once what lies over it moves away: her top under her long hair, her thighs under her skirt, the tops of her sleeves under her top | `layers redraw <name> <layer> --under <layer> --prompt "<what to change>"`, then `build` (below) |
 | You want to paint a fix yourself | `layers build <name>` makes `model.psd`. Paint in any program, keep the layers plain, then `layers pull <name>` |
+
+`layers redraw` (ComfyUI and the GPU, about a minute) draws again the part of her layer that the
+layers named hide, with Qwen Image 2.1's edit. See-through makes that part up, softer and a little
+off in shade, and `layers scale` colours the line along the edge of the layer over it into it, so
+it shows once the hair or skirt over it swings. Her layer is shown to the model alone on grey;
+only that part is drawn again and kept, so what is clear round her stays clear, and the half of
+the line that was on her layer moves onto the edge of the layer it belongs to. The prompt says
+what to change, in plain colour words:
+
+```
+python live2d.py comfy start
+python live2d.py layers redraw akane topwear --under "front hair" --prompt "Remove the thin dark lines that run down the cream cardigan on both sides, and fill them with the same cream colour and soft shading around them."
+python live2d.py comfy stop
+```
+
+It saves a before-and-after picture and the layers as they were in `<out>/redraw/`; look at it,
+and at her in the viewer with the hair, skirt or arms moved, before you keep it. Another
+`--seed` draws it differently.
 
 Two things are settings, not fixes. They go in `<characters>/<name>/layers/full/live2d.json`
 (`templates/live2d.example.json` is a copy to start from):

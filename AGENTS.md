@@ -12,8 +12,9 @@ instructions `README.md` holds, written for an agent working a character through
 - A change to the rig is proven by `python live2d.py build <name>` and check sheets from the viewer
   (`python live2d.py view`, then the page's `window.sheets`; `SKILL.md`, "Checking her model without
   watching the screen"). Reload the page after each build, or a sheet shows her as she was.
-- The steps that take the graphics card (`draw`, `cutout`, `upscale`, `split`, `parts eyes`) want it
-  to themselves: ask before running one, and stop ComfyUI when they are done.
+- The steps that take the graphics card (`draw`, `cutout`, `upscale`, `split`, `parts eyes`,
+  `layers redraw`) want it to themselves: ask before running one, and stop ComfyUI when they are
+  done.
 
 ## Layout
 - `live2d.py`: the one command; picks the Python each step needs.
