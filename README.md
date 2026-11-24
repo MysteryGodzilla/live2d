@@ -341,6 +341,14 @@ python live2d.py layers under akane neck face
 under her chin, so no second jaw line shows when her head lifts. If one still shows beside her
 neck, run it for her back hair too: `layers under akane "back hair" face`.
 
+`layers head` also cleans up what `layers scale` coloured into her other layers from the drawing
+round her old face: her jaw line and a sliver of neck on her back hair, bits of her chin on her
+shirt, a faint line across her neck where her collar's soft edge meets it, a spot of another colour
+inside her neck. It leaves skin over skin alone, and the line drawn down the sides of her neck. Each
+layer's own colour comes from the See-through PSD kept in her layers folder. It says what it
+changed. A character whose head layers were taken with an older kit gets this with
+`python live2d.py layers seams akane`, then `build`.
+
 `layers head` also keeps each head layer at the head pass's own size, about twice her frame's
 (`parts/<layer>@head.png`). `build` puts those in her model's texture, so her face, eyes and brows
 stay sharp when an app shows her close up. A character whose head layers were taken with an older

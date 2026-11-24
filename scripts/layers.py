@@ -32,6 +32,20 @@ psd-tools (MIT), numpy and scipy:
       painted in <layer>'s own colour from just below it: her neck, and her back hair, under her
       chin. The drawing's jaw line gets coloured into them there, and shows as a second jaw line
       when her head lifts, tilts or turns off it
+  seams <name>
+      after the head pass: put right what `scale` coloured into her other layers from the drawing
+      where it shows something else, which shows as a second jaw line or a seam across her neck
+      once her head moves. Each layer's own colour is See-through's, from the PSD kept in her
+      layers folder. Round her head, a layer holding the drawing's colour of something else (her
+      jaw line or neck on her back hair, bits of her chin on her clothes) is cleared where a layer
+      below it is what the drawing shows, and under her head layers it gets its own colour back,
+      shaded like what shows of it nearby. And a soft edge where the drawing shows no edge (a
+      shirt's top edge across her neck) takes the drawing's colour, so no faint line runs there.
+      Her neck is looked at all over: a line of hair colour down its side goes the same way. Hair
+      kept from the whole-body pass that lies above her neck in the order is cleared where her head
+      hides it over her neck, so it can't swing out over it. Layers the head pass gave are left as
+      they are. `head` runs this itself; run it for a character whose head layers were taken
+      before it did, then `build`. Running it again changes nothing
   strays <name> <layer>
       cut a layer below anything the drawing shows of it (faded out a little below that): See-through
       hangs strands of back hair down a character's back that her drawing never has, and they
@@ -106,6 +120,11 @@ STRAY_FADE = 12  # ...and faded out over this many more
 UNDER_NEAR = 0.03  # under: a column is compared with the columns this near it, as a share of the frame
 UNDER_ODD = 0.18   # ...and is odd when its own colour is this far from their middle one (0 to 1)
 UNDER_EVEN = 0.012 # under: colours are evened out over this many columns each side, as a share of the frame
+SEAM_SAME = 0.02   # seams: a layer's pixel this close to the drawing still holds the colour scale gave it
+SEAM_NEAR = 0.02   # seams: what round her head layers is looked at, as a share of the frame
+SEAM_EDGE = 0.006  # seams: as a share of the frame, how far a soft edge looks for its own layer's solid colour;
+                   # also the band down her neck's sides kept as drawn (its line), and her face's soft edge
+SEAM_FAINT = 0.02  # seams: alpha under this is no part of a layer
 
 # Layers the rig shows only with her eyes shut, her mouth open or her cheeks flushed (parts.py
 # makes them): the drawing has her eyes open, mouth shut and no blush, so check and repair leave
@@ -406,6 +425,163 @@ def do_under(name, layer, over):
     save(name, info)
     print(f"{name}: {layer} under {over}: {n} px painted" + (f"; {int(odd.sum())} columns found another colour just "
                                                             "below and took the columns' beside them" if odd.any() else ""))
+
+
+def alien(mask, orig, mine, reach):
+    """The pixels of mask whose drawn colour See-through painted nowhere on this layer (mine) within
+    reach: another part's colour, not a shade of its own it put a little to one side."""
+    from scipy.spatial import cKDTree
+    out = np.zeros_like(mask)
+    ys, xs = np.nonzero(mask)
+    if not len(ys):
+        return out
+    y0, x0 = max(ys.min() - reach, 0), max(xs.min() - reach, 0)
+    box = mine[y0:ys.max() + reach + 1, x0:xs.max() + reach + 1]
+    oy, ox = np.nonzero(box[..., 3] > SOLID)
+    if not len(oy):
+        out[ys, xs] = True
+        return out
+    # One distance for both: a step of reach in place counts as much as DIFF in colour.
+    s = DIFF / reach
+    tree = cKDTree(np.column_stack([(oy + y0) * s, (ox + x0) * s, box[oy, ox, :3]]))
+    d, _ = tree.query(np.column_stack([ys * s, xs * s, orig[ys, xs]]), p=np.inf, distance_upper_bound=DIFF)
+    far = np.isinf(d)
+    out[ys[far], xs[far]] = True
+    return out
+
+
+def do_seams(name):
+    from psd_tools import PSDImage
+    info = load(name)
+    W, H = info["frame"]
+    shown = [layer for layer in info["order"] if layer not in SHUT]
+    if "face" not in shown:
+        sys.exit("she has no face layer: seams is for after the head pass")
+    stack = [[layer, read_part(name, layer)] for layer in shown]
+    orig, _ = drawing(name, info["frame"])
+    # Layers the head pass gave weren't coloured by scale; editing one would also switch off its sharp copy.
+    taken = set(load_sharp(name))
+    if not taken:  # head layers taken before the kit kept sharp copies: the head step's note names them
+        for text in info.get("changes", []):
+            if "head layers from" in text:
+                taken = {t.strip() for t in text.split("): ", 1)[-1].split(";")[0].split(",")}
+    psd = PSDImage.open(os.path.join(folder(name), info["from"]))
+    own = {}  # each whole-body layer as See-through painted it, at her frame's size
+    for layer in psd:
+        if layer.name in shown and layer.name not in taken and layer.topil() is not None:
+            full = Image.new("RGBA", (psd.width, psd.height))
+            full.paste(layer.topil().convert("RGBA"), (layer.left, layer.top))
+            own[layer.name] = resize_rgba(np.asarray(full, np.float32) / 255, (W, H))
+    head = [i for i, (layer, _) in enumerate(stack) if layer in HEAD and layer in taken]
+    face = shown.index("face")
+    done = []
+
+    # 1. Round her head. scale coloured each layer from the drawing wherever it was on top, and the
+    # whole-body face was a little smaller than the drawing's: her jaw line and a sliver of neck went
+    # onto her back hair (and bits of chin onto her clothes). The head pass's face hides most of it
+    # at rest; it shows when her head lifts or her hair sways.
+    # Her face's soft edge, and the colour of her face just inside it: its line.
+    fa = stack[face][1][..., 3]
+    dist, (iy, ix) = ndimage.distance_transform_edt(fa <= SOLID, return_indices=True)
+    face_soft = (fa > SEAM_FAINT) & (dist > 0) & (dist <= round(SEAM_EDGE * H))
+    face_line = np.abs(stack[face][1][..., :3][iy, ix] - orig).max(axis=2)
+    for i in range(face):  # bottom up: a layer cleared first shows what is below the next
+        layer, im = stack[i]
+        if layer not in own:
+            continue
+        mine = own[layer]
+        a = im[..., 3]
+        # Only her head layers over this one hide it. Back hair the head pass took sits under her
+        # clothes and neck: counted, it had clothes far from her head recoloured where they show
+        # (2026-11-24, on a character whose back hair hangs behind her shoulders).
+        over = [j for j in head if j > i]
+        cover = np.max([stack[j][1][..., 3] for j in over], axis=0) if over else np.zeros((H, W), np.float32)
+        near = (ndimage.distance_transform_edt(cover <= SEAM_FAINT) <= round(SEAM_NEAR * H)
+                if (cover > SEAM_FAINT).any() else np.zeros((H, W), bool))
+        # What scale coloured: solid pixels it found on top, still the drawing's colour.
+        painted = (a > SOLID) & (np.abs(im[..., :3] - orig).max(axis=2) < SEAM_SAME)
+        # The drawing's colour of something else: far from what See-through painted this layer.
+        # Round her head; for her neck, all of it: skin, with nothing of another colour on it.
+        foreign = (painted & (True if layer == "neck" else near) & (mine[..., 3] > SEAM_FAINT)
+                   & (np.abs(mine[..., :3] - orig).max(axis=2) > DIFF))
+        # Hair kept from the whole-body pass that lies above her neck in the order (her braid in
+        # front of her coat took her back hair up with it): under her head it would cover her neck
+        # as soon as her hair swings, where the drawing never shows it. Cleared over her neck.
+        over_neck = np.zeros((H, W), bool)
+        if layer in HEAD and "neck" in shown[:i]:
+            over_neck = (stack[shown.index("neck")][1][..., 3] > SOLID) & (cover > SOLID) & (a > SEAM_FAINT)
+        face_edge = painted & face_soft & (layer != "neck")
+        if not foreign.any() and not over_neck.any() and not face_edge.any():
+            continue
+        below, under_top = composite(stack[:i]) if i else (np.ones_like(orig), np.full((H, W), -1, np.int16))
+        lower = under_top >= 0
+        lower_shows = lower & (np.abs(below - orig).max(axis=2) < MATCH)
+        hidden = cover > SOLID
+        # Cleared under her head's soft edge (the jaw line there is the head pass's own now), but
+        # never out of her neck: a hole there would show her hair through it.
+        erase = foreign & ~hidden & lower & (cover > SEAM_FAINT) & (layer != "neck")
+        # And where the layer below is what the drawing shows, if it is another part's colour: one
+        # See-through painted nowhere on this layer close by (skin on her hair). Skin over skin
+        # stays: clearing it gained nothing, and cut a shirt that runs up under her chin into
+        # ragged bits the build then dyed with her collar's colour (2026-11-24).
+        loose = foreign & ~hidden & lower_shows & ~erase
+        erase |= loose & alien(loose, orig, mine, round(SEAM_NEAR * H))
+        # Her face's own edge coloured onto a layer under it, whatever See-through put there: under
+        # her face's soft edge, where the drawing is nearer her face's line just inside it than what
+        # is below this layer. The head pass's face draws that line. The tip of her chin line, on a
+        # shirt whose own collar edge See-through drew dark at that very spot, stayed as a dark
+        # speck just under her chin (2026-11-24).
+        erase |= face_edge & ~hidden & lower & (face_line < np.abs(below - orig).max(axis=2))
+        erase |= over_neck
+        # Its own colour back under her head's soft edge where it isn't cleared; on her neck, a spot
+        # of another colour inside it too. Not along its sides: that's the line drawn round her neck,
+        # and painting it skin broke it up into a ragged edge (2026-11-24).
+        inside = (ndimage.distance_transform_edt(a > SOLID) > round(SEAM_EDGE * H)) if layer == "neck" else False
+        repaint = foreign & ~erase & ((cover > SEAM_FAINT) | inside)
+        if repaint.any():
+            # See-through's colours are a little off the drawing's: shaded by how far they are
+            # where this layer shows, close by, so the repainted part runs on from it.
+            _, top = composite(stack)
+            ring = (top == i) & painted & ~foreign & ndimage.binary_dilation(repaint, iterations=round(SEAM_NEAR * H))
+            shift = np.median((orig - mine[..., :3])[ring], axis=0) if ring.sum() > SPOT else np.zeros(3)
+            im[..., :3][repaint] = np.clip(mine[..., :3] + shift, 0, 1)[repaint]
+        # The soft rim round what's cleared goes with it, as in repair, or a faint line would stay.
+        erase |= ndimage.binary_dilation(erase, iterations=2) & (a <= SOLID) & lower
+        im[..., 3][erase] = 0
+        stack[i][1] = im
+        if erase.any() or repaint.any():
+            write_part(name, layer, im)
+            done.append(f"{layer} round her head ({int(erase.sum())} px cleared, {int(repaint.sum())} given its own colour)")
+
+    # 2. Soft edges. scale gave the drawing's colour only where a layer is solid; its soft edge kept
+    # See-through's, often darker. Where the drawing runs on through the edge (skin into skin: her
+    # shirt's top edge across her neck) that left a faint line the drawing doesn't have.
+    reach = round(SEAM_EDGE * H)
+    _, top = composite(stack)
+    below, under_top = np.ones_like(orig), np.full((H, W), -1, np.int16)
+    for i, (layer, im) in enumerate(stack):
+        if layer in own:
+            a = im[..., 3]
+            soft = (a > SEAM_FAINT) & (a <= SOLID) & (under_top >= 0) & (top == under_top)
+            solid = top == i
+            if soft.any() and solid.any():
+                dist, (iy, ix) = ndimage.distance_transform_edt(~solid, return_indices=True)
+                inner = im[..., :3][iy, ix]  # the layer's own colour just inside its edge
+                fix = (soft & (dist <= reach) & (np.abs(inner - orig).max(axis=2) < MATCH)
+                       & (np.abs(below - orig).max(axis=2) < MATCH) & (np.abs(im[..., :3] - orig).max(axis=2) >= SEAM_SAME))
+                if fix.any():
+                    im[..., :3][fix] = orig[fix]
+                    write_part(name, layer, im)
+                    done.append(f"{layer} soft edge ({int(fix.sum())} px)")
+        # What's below the next layer up.
+        al = im[..., 3:4]
+        below = im[..., :3] * al + below * (1 - al)
+        under_top = np.where(im[..., 3] > SOLID, i, under_top).astype(np.int16)
+
+    if done:
+        note(info, "seams: " + ", ".join(done))
+        save(name, info)
+    print(f"{name}: " + ("; ".join(done) if done else "no seams to put right"))
 
 
 def do_strays(name, layer):
@@ -786,6 +962,10 @@ def do_head(name, psd_path, crop_path):
               f"{'it stays' if len(absent) == 1 else 'they stay'} at that pass's softness")
     if gone:
         print(f"  removed {', '.join(gone)}: run parts.py closed-eyes {name}, then parts.py mouth {name}")
+    # Her face is the head pass's now, so what scale coloured round the old one can be put right:
+    # her old jaw line on her hair, a seam across her neck (2026-11-24: on three characters, found
+    # only once their heads moved).
+    do_seams(name)
 
 
 # Cubism's layout, bottom first: (folder, [(art mesh name, her layer, side)]), side "" for whole,
@@ -903,6 +1083,8 @@ def main(args):
         do_lining(name, rest[0], rest[1], rest[3], float(rest[5]), float(rest[6]))
     elif cmd == "under" and len(rest) == 2:
         do_under(name, rest[0], rest[1])
+    elif cmd == "seams" and not rest:
+        do_seams(name)
     elif cmd == "strays" and len(rest) == 1:
         do_strays(name, rest[0])
     elif cmd == "check" and not rest:

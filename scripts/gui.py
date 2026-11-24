@@ -260,6 +260,8 @@ def build_command(req):
             return ["layers", "head", name, relative(psd), relative(crop)], False
         if sub == "sharp":
             return ["layers", "sharp", name], False
+        if sub == "seams":
+            return ["layers", "seams", name], False
         raise Refuse("Layers: not a command the page runs")
     raise Refuse("That is not a step the page runs")
 

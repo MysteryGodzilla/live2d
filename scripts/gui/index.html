@@ -622,7 +622,9 @@ function drawMain() {
     `<p>If a second jaw line still shows beside her neck, run it for her back hair too.</p>` +
     A(() => ({ step: "layers", name, args: { command: "under", layer: "back hair", over: "face" } }), "Back hair under face") +
     `<p>A character whose head layers were taken with an older kit gets sharp copies with this, then Build.</p>` +
-    A(() => ({ step: "layers", name, args: { command: "sharp" } }), "Sharp copies"),
+    A(() => ({ step: "layers", name, args: { command: "sharp" } }), "Sharp copies") +
+    `<p>Taking her head layers also cleans what her drawing left behind her old face: her jaw line on her hair, a faint line across her neck at her collar. A character whose head layers were taken with an older kit gets that with this, then Build.</p>` +
+    A(() => ({ step: "layers", name, args: { command: "seams" } }), "Seams"),
     first === 5));
 
   // 7. Closed eyes, mouth, blush
