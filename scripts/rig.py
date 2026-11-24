@@ -344,6 +344,7 @@ BUST_WIDE, BUST_HIGH = 0.065, 0.045  # the patch's half width and half height, i
 BODY = ("ParamBodyAngleX", "ParamBodyAngleY", "ParamBodyAngleZ", "ParamBreath")
 STILL = {"legwear", "footwear"}  # layers that are part of her, not cloth that swings
 LAYER_OF = {}  # each part image write_layers made -> the layer it came from
+MOVES_WITH = {}  # a patch layer -> the layer it moves with (layers.json's "moves_with": `layers redraw --behind`)
 DRAWN = {}  # ... -> the box of what is drawn in it, in the rig's units (a mesh's own box is wider)
 MIDDLE = {}  # ... -> the middle of what is drawn in it (its pixels' own), and of its lowest rows
 SHARP = {}  # ... -> its picture at the head pass's own size, and the box of her frame it covers (0 to 1)
@@ -1039,6 +1040,66 @@ def bounce(rig, fig, limbs):
             write_moves(rig, bust.id, part, mesh, move)
 
 
+# A patch layer (`layers redraw --behind`: her top drawn in under her arms, where her sleeves lay over it
+# in the drawing) is hidden as she stands and shows when what lies over it moves away, so it has to
+# move exactly as the layer it patches, or it slides out from under that layer's edge. image2live2d
+# gave the first one a cloth swing of its own (2026-11-25). Every move of the patch's points is taken
+# from the layer it patches, at the same place: inside one of that layer's triangles, by the triangle's
+# three corners; outside them, from its nearest points. Her limbs are posed while the .moc3 is written,
+# not by these moves, so a patch of an arm or a leg isn't followed (none is made: the patch is of a
+# layer the arm lies over).
+FOLLOW_NEAR = 3  # a point outside the layer's triangles takes the moves of this many of its nearest points
+
+
+def patches_follow(rig, fig):
+    """Each patch layer's points move as the layer it patches does there. Returns what was followed."""
+    import numpy as np
+    said = []
+    for patch, layer in MOVES_WITH.items():
+        mine = [(p, m) for p, m in fig.drawn if LAYER_OF.get(p.id) == patch]
+        theirs = [(p, m) for p, m in fig.drawn if LAYER_OF.get(p.id) == layer]
+        if not mine or not theirs:
+            continue
+        points = np.array([v for _, m in theirs for v in m.vertices], float)
+        owner = [(p.id, i) for p, m in theirs for i in range(len(m.vertices))]
+        tris = np.array([[a, b, c] for k, (p, m) in enumerate(theirs)
+                         for a, b, c in [[sum(len(t[1].vertices) for t in theirs[:k]) + i for i in tri] for tri in m.triangles]])
+        how = {}  # patch part -> for each of its points, [(their point, weight)]
+        for p, m in mine:
+            ways = []
+            for x, y in m.vertices:
+                A, B, C = points[tris[:, 0]], points[tris[:, 1]], points[tris[:, 2]]
+                d = (B[:, 1] - C[:, 1]) * (A[:, 0] - C[:, 0]) + (C[:, 0] - B[:, 0]) * (A[:, 1] - C[:, 1])
+                d = np.where(np.abs(d) < 1e-12, 1e-12, d)
+                l1 = ((B[:, 1] - C[:, 1]) * (x - C[:, 0]) + (C[:, 0] - B[:, 0]) * (y - C[:, 1])) / d
+                l2 = ((C[:, 1] - A[:, 1]) * (x - C[:, 0]) + (A[:, 0] - C[:, 0]) * (y - C[:, 1])) / d
+                l3 = 1 - l1 - l2
+                inside = np.nonzero((l1 >= -1e-9) & (l2 >= -1e-9) & (l3 >= -1e-9))[0]
+                if len(inside):
+                    t = inside[0]
+                    ways.append(list(zip(tris[t], (l1[t], l2[t], l3[t]))))
+                else:
+                    far = np.hypot(points[:, 0] - x, points[:, 1] - y)
+                    near = np.argsort(far)[:FOLLOW_NEAR]
+                    w = 1 / np.maximum(far[near], 1e-9)
+                    ways.append(list(zip(near, w / w.sum())))
+            how[p.id] = ways
+        for param in rig.parameters:
+            for key in param.keyforms:
+                theirs_now = {pid: key.mesh_offsets.get(pid) for pid in {o for o, _ in owner}}
+                moved = any(v is not None for v in theirs_now.values())
+                for pid, ways in how.items():
+                    key.mesh_offsets.pop(pid, None)
+                    if moved:
+                        def offset(i):
+                            got = theirs_now[owner[i][0]]
+                            return got[owner[i][1]] if got is not None else (0.0, 0.0)
+                        key.mesh_offsets[pid] = [(sum(w * offset(i)[0] for i, w in way), sum(w * offset(i)[1] for i, w in way))
+                                                 for way in ways]
+        said.append(f"{patch} moves with {layer}")
+    return said
+
+
 def pose_rig(rig, fig):
     """Rewrite how she moves in the rig. Returns what the .moc3 writer needs besides the rig."""
     clear_moves(rig, lambda pid: pid in BODY or pid.startswith(("ParamArm", "ParamLeg")), fig.drawn)
@@ -1059,6 +1120,8 @@ def pose_rig(rig, fig):
     legs = [leg for leg in (Leg(rig, fig, "L"), Leg(rig, fig, "R")) if leg.ok]
     liven_idle(rig, arms)
     bounce(rig, fig, arms + legs)
+    for line in patches_follow(rig, fig):
+        print(line)
     print(f"body: her feet at {fig.feet:.3f}, knees {fig.knee:.3f}, hips {fig.hips:.3f}, neck "
           f"{fig.feet + fig.tall:.3f}; {len(arms)} arms that bend, {len(legs)} legs that bend; "
           f"irises go {', '.join(f'{way} {far:.4f}' for way, far in reach.items())}")
@@ -1451,7 +1514,12 @@ def write_layers(name):
     src = layers_dir(name)
     with open(os.path.join(src, "layers.json"), encoding="utf-8") as f:
         info = json.load(f)
-    whole = set(settings(name).get("whole", []))
+    MOVES_WITH.clear()
+    MOVES_WITH.update({patch: layer for patch, layer in info.get("moves_with", {}).items()
+                       if patch in info["order"] and layer in info["order"]})
+    # A patch is kept in one piece, as part of her body: in two pieces at her sides, the patch under her
+    # arms reads as a pair of limbs to image2live2d, and as loose cloth it got a swing of its own.
+    whole = set(settings(name).get("whole", [])) | set(MOVES_WITH)
     tucked = {under: over for under, over in settings(name).get("tucked", {}).items()
               if under in info["order"] and over in info["order"]}
     dst = os.path.join(out_dir(name), "layers")
