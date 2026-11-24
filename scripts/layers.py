@@ -42,10 +42,11 @@ psd-tools (MIT), numpy and scipy:
       like what shows of it nearby. Hair kept from the whole-body pass that lies above her neck in
       the order is cleared where her face hides it over her neck, so it can't swing out over it.
       And a layer's soft edge across her neck where the drawing shows no edge (a shirt's top edge)
-      takes the drawing's colour, so no faint line runs there. Her neck itself, her hair below her
-      face and the layers the head pass gave are left as they are. `head` runs this itself; run it
-      for a character whose head layers were taken before it did, then `build`. Running it again
-      changes nothing
+      takes the drawing's colour, so no faint line runs there. A bit of a layer lying apart from the
+      rest of it, mostly under her face (a scrap of collar), is cleared. Her neck itself, her hair
+      below her face and the layers the head pass gave are left as they are. `head` runs this
+      itself; run it for a character whose head layers were taken before it did, then `build`.
+      Running it again changes nothing
   strays <name> <layer>
       cut a layer below anything the drawing shows of it (faded out a little below that): See-through
       hangs strands of back hair down a character's back that her drawing never has, and they
@@ -475,6 +476,26 @@ def do_seams(name):
     face = shown.index("face")
     neck = shown.index("neck") if "neck" in shown else -1
     done = []
+
+    # 0. A bit of a whole-body layer lying apart from the rest of it, mostly under her face: See-through's
+    # collar or shirt painted under her chin, coloured by scale. Her face hides most of it at rest, and
+    # it floats there when her head lifts or turns. It is cleared (2026-11-25, on two characters; the
+    # few pixels of it that showed below her chin were a darker edge than the drawing's line).
+    under_face = stack[face][1][..., 3] > SOLID
+    for i in range(face):
+        layer, im = stack[i]
+        if layer not in own or layer == "neck":
+            continue
+        pieces, n = ndimage.label(im[..., 3] > SEAM_FAINT, structure=np.ones((3, 3)))
+        if n < 2:
+            continue
+        sizes = ndimage.sum(np.ones((H, W)), pieces, range(1, n + 1))
+        under = ndimage.mean(under_face, pieces, range(1, n + 1))
+        loose = np.isin(pieces, 1 + np.flatnonzero((under > 0.5) & (sizes < sizes.max())))
+        if loose.any():
+            im[..., 3][loose] = 0
+            write_part(name, layer, im)
+            done.append(f"{layer}: a loose bit under her face cleared ({int(loose.sum())} px)")
 
     # 1. Round her face. scale coloured each layer from the drawing wherever it was on top, and the
     # whole-body face was a little smaller than the drawing's: her jaw line and a sliver of neck went

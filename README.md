@@ -343,7 +343,8 @@ neck, run it for her back hair too: `layers under akane "back hair" face`.
 
 `layers head` also cleans up what `layers scale` coloured into her other layers from the drawing
 round her old face: her jaw line and a sliver of neck on her back hair, bits of her chin on her
-shirt, a faint line across her neck where her collar's soft edge meets it. It leaves her neck
+shirt, a faint line across her neck where her collar's soft edge meets it, a scrap of collar
+floating under her chin. It leaves her neck
 itself, her hair below her face and everything away from her face and neck as they were. Each
 layer's own colour comes from the See-through PSD kept in her layers folder. It says what it
 changed. A character whose head layers were taken with an older kit gets this with

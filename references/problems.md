@@ -42,6 +42,7 @@ comes back in a new form. Commands are `python <kit>/live2d.py ...`.
 | Strands swing out from behind her that aren't in her drawing | See-through painted back hair down her back | `layers strays <name> "back hair"` |
 | `build` says "0 arms that bend" | Her arms layer isn't two separate shapes: an arm touches her body, or her hands meet | Draw her again with her arms away from her sides. Or accept arms that don't move: `"whole": ["handwear"]` |
 | `build` says "0 legs that bend" | Her legs touch all the way down, so they can't be cut apart | Draw her again with a gap between her legs. Without it she still stands and sways; her knees don't bend |
+| A scrap of collar floating under her chin when her head lifts or turns | See-through painted a bit of her collar or shirt under her chin, apart from the rest of the layer, and `scale` coloured it from the drawing | Handled: `layers seams` (run by `layers head`) clears a bit of a whole-body layer that lies apart from the rest of it, mostly under her face |
 
 ## Her head and face
 
