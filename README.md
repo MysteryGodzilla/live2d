@@ -701,6 +701,7 @@ for `layers add` must be on that frame, not on her drawing's own size.
 | A layer in the wrong order (her skirt should be over her shirt) | `layers move <name> <layer> --above <layer>` |
 | A layer See-through made but left out | `layers add <name> <layer> <file.png> --above <layer>` |
 | Lines, slits or another shade on a part once what lies over it moves away: her top under her long hair, her thighs under her skirt, the tops of her sleeves under her top | `layers redraw <name> <layer> --under <layer> --prompt "<what to change>"`, then `build` (below) |
+| Holes at the sides of her top that show what is behind her once her arms swing out | `layers redraw <name> topwear --behind handwear --prompt "<what to change>"`, then `build` (below) |
 | You want to paint a fix yourself | `layers build <name>` makes `model.psd`. Paint in any program, keep the layers plain, then `layers pull <name>` |
 
 `layers redraw` (ComfyUI and the GPU, about a minute) draws again the part of her layer that the
@@ -720,6 +721,16 @@ python live2d.py comfy stop
 It saves a before-and-after picture and the layers as they were in `<out>/redraw/`; look at it,
 and at her in the viewer with the hair, skirt or arms moved, before you keep it. Another
 `--seed` draws it differently.
+
+Where her sleeves lie over the sides of her top in the drawing, `repair` cut her top away so the
+sleeve shows, and the holes show her back hair once her arms swing out. `--behind` draws those
+holes and a ring of her top round them as a patch of their own, just under her arms: hidden as she
+stands, there once an arm moves away. `build` moves the patch exactly as her top. The ragged edge
+of her top over her sleeves goes to the sleeves, so she looks as drawn at rest:
+
+```
+python live2d.py layers redraw akane topwear --behind handwear --prompt "Make the cream cardigan's sides clean and even where they meet the sleeves: the same flat cream colour, soft shading and thin outline all the way down, with no gaps, marks or texture."
+```
 
 Two things are settings, not fixes. They go in `<characters>/<name>/layers/full/live2d.json`
 (`templates/live2d.example.json` is a copy to start from):
